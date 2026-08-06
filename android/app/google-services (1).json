@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "928643598475",
+    "project_id": "carebridge-b5323",
+    "storage_bucket": "carebridge-b5323.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:928643598475:android:c52ec2fd667a2906272c8e",
+        "android_client_info": {
+          "package_name": "com.example.carebridge"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAI1mIkuy9KVDpsvku-Q2Q5T4MISzIm1g4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
