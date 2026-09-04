@@ -128,6 +128,7 @@ class _ElderDashboardState extends State<ElderDashboard> {
               ),
             ),
           ),
+
           const SizedBox(height: 12),
 
           // ==========================================================
@@ -871,7 +872,7 @@ class _ElderDashboardState extends State<ElderDashboard> {
 
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.blue.withOpacity(0.20),
+                      color: Colors.blue.withValues(alpha: 0.20),
                       blurRadius: 18,
                       offset: const Offset(0, 8),
                     ),
@@ -932,7 +933,7 @@ class _ElderDashboardState extends State<ElderDashboard> {
                         margin: const EdgeInsets.only(bottom: 14),
 
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
+                          color: Colors.white.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(15),
                         ),
 
@@ -955,7 +956,7 @@ class _ElderDashboardState extends State<ElderDashboard> {
                       margin: const EdgeInsets.only(bottom: 18),
 
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.12),
+                        color: Colors.white.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(15),
                       ),
 
@@ -1003,8 +1004,8 @@ class _ElderDashboardState extends State<ElderDashboard> {
                           boxShadow: [
                             BoxShadow(
                               color: _isListening
-                                  ? Colors.white.withOpacity(0.45)
-                                  : Colors.black.withOpacity(0.12),
+                                  ? Colors.white.withValues(alpha: 0.45)
+                                  : Colors.black.withValues(alpha: 0.12),
 
                               blurRadius: _isListening ? 25 : 15,
 
@@ -1184,7 +1185,7 @@ class _ElderDashboardState extends State<ElderDashboard> {
 
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Colors.black.withValues(alpha: 0.05),
                       blurRadius: 12,
                       offset: const Offset(0, 5),
                     ),

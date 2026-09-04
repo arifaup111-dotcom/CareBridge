@@ -156,7 +156,7 @@ class AppointmentsScreen extends StatelessWidget {
 
         boxShadow: [
           BoxShadow(
-            color: Colors.blue.withOpacity(0.18),
+            color: Colors.blue.withValues(alpha: 0.18),
             blurRadius: 15,
             offset: const Offset(0, 7),
           ),
@@ -257,7 +257,7 @@ class AppointmentsScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
 
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.18),
+              color: Colors.white.withValues(alpha: 0.18),
               borderRadius: BorderRadius.circular(12),
             ),
 
@@ -290,7 +290,7 @@ class AppointmentsScreen extends StatelessWidget {
 
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 12,
             offset: const Offset(0, 5),
           ),
