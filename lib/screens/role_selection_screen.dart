@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'login_screen.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
@@ -31,6 +32,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
               children: [
                 const SizedBox(height: 10),
 
+                // ------------------------------------------------
+                // CAREBRIDGE LOGO
+                // ------------------------------------------------
                 Center(
                   child: Container(
                     width: 72,
@@ -40,7 +44,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                       borderRadius: BorderRadius.circular(22),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.blue.withOpacity(.15),
+                          color: Colors.blue.withOpacity(0.15),
                           blurRadius: 18,
                           offset: const Offset(0, 8),
                         ),
@@ -56,6 +60,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
 
                 const SizedBox(height: 28),
 
+                // ------------------------------------------------
+                // TITLE
+                // ------------------------------------------------
                 const Text(
                   "Welcome to\nCareBridge ❤️",
                   style: TextStyle(
@@ -68,8 +75,12 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
 
                 const SizedBox(height: 10),
 
+                // ------------------------------------------------
+                // DESCRIPTION
+                // ------------------------------------------------
                 Text(
-                  "How will you be using CareBridge today?\nChoose one role to personalize your experience.",
+                  "How will you be using CareBridge today?\n"
+                  "Choose one role to personalize your experience.",
                   style: TextStyle(
                     fontSize: 16,
                     color: Colors.grey.shade700,
@@ -78,6 +89,10 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                 ),
 
                 const SizedBox(height: 30),
+
+                // ------------------------------------------------
+                // ELDER
+                // ------------------------------------------------
                 buildRoleCard(
                   emoji: "👴",
                   title: "Elder",
@@ -87,6 +102,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
 
                 const SizedBox(height: 16),
 
+                // ------------------------------------------------
+                // CAREGIVER
+                // ------------------------------------------------
                 buildRoleCard(
                   emoji: "❤️",
                   title: "Caregiver",
@@ -96,14 +114,21 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
 
                 const SizedBox(height: 16),
 
+                // ------------------------------------------------
+                // FAMILY MEMBER
+                // ------------------------------------------------
                 buildRoleCard(
                   emoji: "👨‍👩‍👧",
                   title: "Family Member",
                   subtitle: "Stay connected with loved ones",
                   color: const Color(0xFFEEF4FF),
                 ),
+
                 const Spacer(),
 
+                // ------------------------------------------------
+                // CONTINUE BUTTON
+                // ------------------------------------------------
                 SizedBox(
                   width: double.infinity,
                   height: 58,
@@ -111,18 +136,14 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                     onPressed: selectedRole == null
                         ? null
                         : () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => LoginScreen(),
-                              ),
-                            );
+                            _continueToSelectedRole();
                           },
                     style: ElevatedButton.styleFrom(
                       elevation: 0,
                       backgroundColor: const Color(0xFF4F8EF7),
                       foregroundColor: Colors.white,
                       disabledBackgroundColor: Colors.grey.shade300,
+                      disabledForegroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(18),
                       ),
@@ -145,6 +166,10 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       ),
     );
   }
+
+  // ==============================================================
+  // ROLE CARD
+  // ==============================================================
 
   Widget buildRoleCard({
     required String emoji,
@@ -172,7 +197,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(.05),
+              color: Colors.black.withOpacity(0.05),
               blurRadius: 12,
               offset: const Offset(0, 6),
             ),
@@ -180,6 +205,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         ),
         child: Row(
           children: [
+            // Emoji
             CircleAvatar(
               radius: 32,
               backgroundColor: Colors.white,
@@ -188,6 +214,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
 
             const SizedBox(width: 18),
 
+            // Text
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -211,6 +238,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
               ),
             ),
 
+            // Selection indicator
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 250),
               child: isSelected
@@ -228,11 +256,35 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                         size: 18,
                       ),
                     )
-                  : const SizedBox(key: ValueKey("empty"), width: 32),
+                  : const SizedBox(
+                      key: ValueKey("empty"),
+                      width: 32,
+                      height: 32,
+                    ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  // ==============================================================
+  // CONTINUE LOGIC
+  // ==============================================================
+
+  void _continueToSelectedRole() {
+    if (selectedRole == "Elder") {
+      // Elder → Elder Dashboard
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+      );
+    } else {
+      // Caregiver / Family Member → Login
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+      );
+    }
   }
 }
