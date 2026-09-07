@@ -2,10 +2,17 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'elder_dashboard.dart';
-import 'register_screen.dart';
 import 'family_dashboard.dart';
+import 'register_screen.dart';
+
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final String selectedRole;
+
+  const LoginScreen({
+    
+    super.key,
+    this.selectedRole = 'Elder',
+  });
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -35,7 +42,6 @@ class _LoginScreenState extends State<LoginScreen> {
     final email = emailController.text.trim();
     final password = passwordController.text.trim();
 
-    // Check empty fields
     if (email.isEmpty || password.isEmpty) {
       _showMessage("Please enter your email and password.");
       return;
@@ -46,16 +52,29 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      // Firebase Authentication
-      await _auth.signInWithEmailAndPassword(email: email, password: password);
+      await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
 
       if (!mounted) return;
 
-      // Login successful → Elder Dashboard
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const ElderDashboard()),
-      );
+      // Navigate according to selected role
+      if (widget.selectedRole == 'Family Member') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const FamilyDashboard(),
+          ),
+        );
+      } else {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const ElderDashboard(),
+          ),
+        );
+      }
     } on FirebaseAuthException catch (e) {
       String message;
 
@@ -102,9 +121,11 @@ class _LoginScreenState extends State<LoginScreen> {
   // ================================================================
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+      ),
+    );
   }
 
   // ================================================================
@@ -120,11 +141,21 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     try {
-      await _auth.sendPasswordResetEmail(email: email);
+      await _auth.sendPasswordResetEmail(
+        email: email,
+      );
 
-      _showMessage("Password reset email sent. Check your inbox.");
+      if (!mounted) return;
+
+      _showMessage(
+        "Password reset email sent. Check your inbox.",
+      );
     } on FirebaseAuthException catch (e) {
-      _showMessage(e.message ?? "Unable to send password reset email.");
+      if (!mounted) return;
+
+      _showMessage(
+        e.message ?? "Unable to send password reset email.",
+      );
     }
   }
 
@@ -135,23 +166,24 @@ class _LoginScreenState extends State<LoginScreen> {
 
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),
-
+          padding: const EdgeInsets.symmetric(
+            horizontal: 25,
+            vertical: 20,
+          ),
           child: Column(
             children: [
               const SizedBox(height: 30),
 
-              // ----------------------------------------------------
+              // ====================================================
               // LOGO
-              // ----------------------------------------------------
+              // ====================================================
+
               Container(
                 width: 90,
                 height: 90,
-
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(25),
-
                   boxShadow: [
                     BoxShadow(
                       color: Colors.blue.withValues(alpha: 0.15),
@@ -160,7 +192,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ],
                 ),
-
                 child: const Icon(
                   Icons.favorite_rounded,
                   color: Colors.red,
@@ -170,9 +201,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 25),
 
-              // ----------------------------------------------------
+              // ====================================================
               // TITLE
-              // ----------------------------------------------------
+              // ====================================================
+
               const Text(
                 "Welcome Back",
                 style: TextStyle(
@@ -184,27 +216,29 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 8),
 
-              const Text(
-                "Sign in to continue using CareBridge",
-                style: TextStyle(fontSize: 16, color: Colors.black54),
+              Text(
+                "Login as ${widget.selectedRole}",
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: Colors.black54,
+                ),
                 textAlign: TextAlign.center,
               ),
 
               const SizedBox(height: 40),
 
-              // ----------------------------------------------------
+              // ====================================================
               // EMAIL
-              // ----------------------------------------------------
+              // ====================================================
+
               TextField(
                 controller: emailController,
-
                 keyboardType: TextInputType.emailAddress,
-
                 decoration: InputDecoration(
                   labelText: "Email",
-
-                  prefixIcon: const Icon(Icons.email_outlined),
-
+                  prefixIcon: const Icon(
+                    Icons.email_outlined,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(15),
                   ),
@@ -213,33 +247,30 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 20),
 
-              // ----------------------------------------------------
+              // ====================================================
               // PASSWORD
-              // ----------------------------------------------------
+              // ====================================================
+
               TextField(
                 controller: passwordController,
-
                 obscureText: _obscurePassword,
-
                 decoration: InputDecoration(
                   labelText: "Password",
-
-                  prefixIcon: const Icon(Icons.lock_outline),
-
+                  prefixIcon: const Icon(
+                    Icons.lock_outline,
+                  ),
                   suffixIcon: IconButton(
                     icon: Icon(
                       _obscurePassword
                           ? Icons.visibility_off
                           : Icons.visibility,
                     ),
-
                     onPressed: () {
                       setState(() {
                         _obscurePassword = !_obscurePassword;
                       });
                     },
                   ),
-
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(15),
                   ),
@@ -248,45 +279,42 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 12),
 
-              // ----------------------------------------------------
+              // ====================================================
               // FORGOT PASSWORD
-              // ----------------------------------------------------
+              // ====================================================
+
               Align(
                 alignment: Alignment.centerRight,
-
                 child: TextButton(
                   onPressed: _forgotPassword,
-
-                  child: const Text("Forgot Password?"),
+                  child: const Text(
+                    "Forgot Password?",
+                  ),
                 ),
               ),
 
               const SizedBox(height: 15),
 
-              // ----------------------------------------------------
+              // ====================================================
               // LOGIN BUTTON
-              // ----------------------------------------------------
+              // ====================================================
+
               SizedBox(
                 width: double.infinity,
                 height: 55,
-
                 child: ElevatedButton(
                   onPressed: _isLoading ? null : _login,
-
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF1E3A8A),
                     foregroundColor: Colors.white,
-
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(15),
                     ),
                   ),
-
                   child: _isLoading
                       ? const SizedBox(
                           width: 25,
                           height: 25,
-
                           child: CircularProgressIndicator(
                             strokeWidth: 3,
                             color: Colors.white,
@@ -301,30 +329,32 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                 ),
               ),
-            ),
+
               const SizedBox(height: 25),
 
-              // ----------------------------------------------------
+              // ====================================================
               // REGISTER
-              // ----------------------------------------------------
+              // ====================================================
+
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-
                 children: [
-                  const Text("Don't have an account?"),
-
+                  const Text(
+                    "Don't have an account?",
+                  ),
                   TextButton(
                     onPressed: () {
                       Navigator.push(
                         context,
-
                         MaterialPageRoute(
-                          builder: (context) => const RegisterScreen(),
+                          builder: (context) =>
+                              const RegisterScreen(),
                         ),
                       );
                     },
-
-                    child: const Text("Register"),
+                    child: const Text(
+                      "Register",
+                    ),
                   ),
                 ],
               ),
