@@ -56,7 +56,6 @@ class DefaultFirebaseOptions {
     projectId: 'carebridge-b5323',
     storageBucket: 'carebridge-b5323.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyC4-FxTSY4-UamGFOnCP9LwPr25uok7dUM',
     appId: '1:928643598475:ios:7b58c57a44d006a3272c8e',
@@ -65,7 +64,6 @@ class DefaultFirebaseOptions {
     storageBucket: 'carebridge-b5323.firebasestorage.app',
     iosBundleId: 'com.example.carebridge',
   );
-
   static const FirebaseOptions macos = FirebaseOptions(
     apiKey: 'AIzaSyC4-FxTSY4-UamGFOnCP9LwPr25uok7dUM',
     appId: '1:928643598475:ios:7b58c57a44d006a3272c8e',

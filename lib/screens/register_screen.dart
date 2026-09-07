@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -9,6 +10,8 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
+
+  final AuthService authService = AuthService();
 
   final TextEditingController nameController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
@@ -104,32 +107,34 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     icon: Icons.person_outline,
                   ),
                   validator: (value) =>
-                      value!.isEmpty ? "Enter your name" : null,
+                      value == null || value.isEmpty ? "Enter your name" : null,
                 ),
 
                 const SizedBox(height: 18),
 
                 TextFormField(
                   controller: emailController,
+                  keyboardType: TextInputType.emailAddress,
                   decoration: inputDecoration(
                     label: "Email",
                     icon: Icons.email_outlined,
                   ),
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (value) => value!.isEmpty ? "Enter email" : null,
+                  validator: (value) =>
+                      value == null || value.isEmpty ? "Enter email" : null,
                 ),
 
                 const SizedBox(height: 18),
 
                 TextFormField(
                   controller: phoneController,
+                  keyboardType: TextInputType.phone,
                   decoration: inputDecoration(
                     label: "Phone Number",
                     icon: Icons.phone_outlined,
                   ),
-                  keyboardType: TextInputType.phone,
-                  validator: (value) =>
-                      value!.isEmpty ? "Enter phone number" : null,
+                  validator: (value) => value == null || value.isEmpty
+                      ? "Enter phone number"
+                      : null,
                 ),
 
                 const SizedBox(height: 18),
@@ -153,8 +158,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       },
                     ),
                   ),
-                  validator: (value) =>
-                      value!.length < 6 ? "Minimum 6 characters" : null,
+                  validator: (value) {
+                    if (value == null || value.length < 6) {
+                      return "Minimum 6 characters";
+                    }
+                    return null;
+                  },
                 ),
 
                 const SizedBox(height: 18),
@@ -192,21 +201,34 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   width: double.infinity,
                   height: 55,
                   child: ElevatedButton(
-                    onPressed: () {
-                      if (_formKey.currentState!.validate()) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("Registration Successful"),
-                          ),
-                        );
-                      }
-                    },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF4F8EF7),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(15),
                       ),
                     ),
+                    onPressed: () async {
+                      if (_formKey.currentState!.validate()) {
+                        try {
+                          await authService.registerUser(
+                            email: emailController.text.trim(),
+                            password: passwordController.text.trim(),
+                          );
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("Registration Successful"),
+                            ),
+                          );
+
+                          Navigator.pop(context);
+                        } catch (e) {
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text(e.toString())));
+                        }
+                      }
+                    },
                     child: const Text(
                       "Register",
                       style: TextStyle(fontSize: 18, color: Colors.white),
