@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'login_screen.dart';
+import 'admin_login_screen.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({super.key});
@@ -21,12 +22,18 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFFE8F5FF), Color(0xFFFDFDFD)],
+            colors: [
+              Color(0xFFE8F5FF),
+              Color(0xFFFDFDFD),
+            ],
           ),
         ),
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 22,
+              vertical: 18,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -88,43 +95,68 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                   ),
                 ),
 
-                const SizedBox(height: 30),
+                const SizedBox(height: 25),
 
                 // ------------------------------------------------
-                // ELDER
+                // ROLE CARDS
                 // ------------------------------------------------
-                buildRoleCard(
-                  emoji: "👴",
-                  title: "Elder",
-                  subtitle: "I need assistance",
-                  color: const Color(0xFFFFF5DD),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        // ------------------------------------------------
+                        // ELDER
+                        // ------------------------------------------------
+                        buildRoleCard(
+                          emoji: "👴",
+                          title: "Elder",
+                          subtitle: "I need assistance",
+                          color: const Color(0xFFFFF5DD),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // ------------------------------------------------
+                        // CAREGIVER
+                        // ------------------------------------------------
+                        buildRoleCard(
+                          emoji: "❤️",
+                          title: "Caregiver",
+                          subtitle: "I'm caring for someone",
+                          color: const Color(0xFFEAFBF3),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // ------------------------------------------------
+                        // FAMILY MEMBER
+                        // ------------------------------------------------
+                        buildRoleCard(
+                          emoji: "👨‍👩‍👧",
+                          title: "Family Member",
+                          subtitle: "Stay connected with loved ones",
+                          color: const Color(0xFFEEF4FF),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // ------------------------------------------------
+                        // ADMIN
+                        // ------------------------------------------------
+                        buildRoleCard(
+                          emoji: "🛡️",
+                          title: "Admin",
+                          subtitle: "Manage and monitor CareBridge",
+                          color: const Color(0xFFF1EEFF),
+                        ),
+
+                        const SizedBox(height: 10),
+                      ],
+                    ),
+                  ),
                 ),
 
-                const SizedBox(height: 16),
-
-                // ------------------------------------------------
-                // CAREGIVER
-                // ------------------------------------------------
-                buildRoleCard(
-                  emoji: "❤️",
-                  title: "Caregiver",
-                  subtitle: "I'm caring for someone",
-                  color: const Color(0xFFEAFBF3),
-                ),
-
-                const SizedBox(height: 16),
-
-                // ------------------------------------------------
-                // FAMILY MEMBER
-                // ------------------------------------------------
-                buildRoleCard(
-                  emoji: "👨‍👩‍👧",
-                  title: "Family Member",
-                  subtitle: "Stay connected with loved ones",
-                  color: const Color(0xFFEEF4FF),
-                ),
-
-                const Spacer(),
+                const SizedBox(height: 10),
 
                 // ------------------------------------------------
                 // CONTINUE BUTTON
@@ -192,7 +224,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
           color: color,
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: isSelected ? const Color(0xFF4F8EF7) : Colors.transparent,
+            color: isSelected
+                ? const Color(0xFF4F8EF7)
+                : Colors.transparent,
             width: 3,
           ),
           boxShadow: [
@@ -209,7 +243,10 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
             CircleAvatar(
               radius: 32,
               backgroundColor: Colors.white,
-              child: Text(emoji, style: const TextStyle(fontSize: 28)),
+              child: Text(
+                emoji,
+                style: const TextStyle(fontSize: 28),
+              ),
             ),
 
             const SizedBox(width: 18),
@@ -232,7 +269,10 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
 
                   Text(
                     subtitle,
-                    style: TextStyle(color: Colors.grey.shade700, fontSize: 15),
+                    style: TextStyle(
+                      color: Colors.grey.shade700,
+                      fontSize: 15,
+                    ),
                   ),
                 ],
               ),
@@ -273,17 +313,19 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   // ==============================================================
 
   void _continueToSelectedRole() {
-    if (selectedRole == "Elder") {
-      // Elder → Elder Dashboard
+    if (selectedRole == "Admin") {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        MaterialPageRoute(
+          builder: (context) => const AdminLoginScreen(),
+        ),
       );
     } else {
-      // Caregiver / Family Member → Login
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        MaterialPageRoute(
+          builder: (context) => const LoginScreen(),
+        ),
       );
     }
   }

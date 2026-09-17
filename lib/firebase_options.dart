@@ -41,44 +41,44 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyCxECP6-FSloeioXT1itJnUHi6f6uZyFAc',
-    appId: '1:928643598475:web:8c9cde0da0543061272c8e',
-    messagingSenderId: '928643598475',
-    projectId: 'carebridge-b5323',
-    authDomain: 'carebridge-b5323.firebaseapp.com',
-    storageBucket: 'carebridge-b5323.firebasestorage.app',
+    apiKey: 'AIzaSyDG9BksxUGGmjBHoI7EB2tIgsJJLhXPidw',
+    appId: '1:1084212496696:web:33332ba0cab6eddabf19cd',
+    messagingSenderId: '1084212496696',
+    projectId: 'carebridge-e1eb9',
+    authDomain: 'carebridge-e1eb9.firebaseapp.com',
+    storageBucket: 'carebridge-e1eb9.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyAI1mIkuy9KVDpsvku-Q2Q5T4MISzIm1g4',
-    appId: '1:928643598475:android:c52ec2fd667a2906272c8e',
-    messagingSenderId: '928643598475',
-    projectId: 'carebridge-b5323',
-    storageBucket: 'carebridge-b5323.firebasestorage.app',
+    apiKey: 'AIzaSyCHY4knNyZ9FUDgjbp9dARsiXOJHDJHo8c',
+    appId: '1:1084212496696:android:3135f2d818c80a6ebf19cd',
+    messagingSenderId: '1084212496696',
+    projectId: 'carebridge-e1eb9',
+    storageBucket: 'carebridge-e1eb9.firebasestorage.app',
   );
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyC4-FxTSY4-UamGFOnCP9LwPr25uok7dUM',
-    appId: '1:928643598475:ios:7b58c57a44d006a3272c8e',
-    messagingSenderId: '928643598475',
-    projectId: 'carebridge-b5323',
-    storageBucket: 'carebridge-b5323.firebasestorage.app',
+    apiKey: 'AIzaSyAAJgF_GtHA6KEEIA9GSGvZAuLyCBRzztc',
+    appId: '1:1084212496696:ios:ae10350b3abac11abf19cd',
+    messagingSenderId: '1084212496696',
+    projectId: 'carebridge-e1eb9',
+    storageBucket: 'carebridge-e1eb9.firebasestorage.app',
     iosBundleId: 'com.example.carebridge',
   );
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyC4-FxTSY4-UamGFOnCP9LwPr25uok7dUM',
-    appId: '1:928643598475:ios:7b58c57a44d006a3272c8e',
-    messagingSenderId: '928643598475',
-    projectId: 'carebridge-b5323',
-    storageBucket: 'carebridge-b5323.firebasestorage.app',
+    apiKey: 'AIzaSyAAJgF_GtHA6KEEIA9GSGvZAuLyCBRzztc',
+    appId: '1:1084212496696:ios:ae10350b3abac11abf19cd',
+    messagingSenderId: '1084212496696',
+    projectId: 'carebridge-e1eb9',
+    storageBucket: 'carebridge-e1eb9.firebasestorage.app',
     iosBundleId: 'com.example.carebridge',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyCxECP6-FSloeioXT1itJnUHi6f6uZyFAc',
-    appId: '1:928643598475:web:5db6e2d939387b84272c8e',
-    messagingSenderId: '928643598475',
-    projectId: 'carebridge-b5323',
-    authDomain: 'carebridge-b5323.firebaseapp.com',
-    storageBucket: 'carebridge-b5323.firebasestorage.app',
+    apiKey: 'AIzaSyDG9BksxUGGmjBHoI7EB2tIgsJJLhXPidw',
+    appId: '1:1084212496696:web:12fe99fa99373368bf19cd',
+    messagingSenderId: '1084212496696',
+    projectId: 'carebridge-e1eb9',
+    authDomain: 'carebridge-e1eb9.firebaseapp.com',
+    storageBucket: 'carebridge-e1eb9.firebasestorage.app',
   );
 }
