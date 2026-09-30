@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'elders_screen.dart';
+import 'family_members_screen.dart';
+import 'caregivers_screen.dart';
 
 class ManageUsersScreen extends StatelessWidget {
   const ManageUsersScreen({super.key});
@@ -54,11 +56,10 @@ class ManageUsersScreen extends StatelessWidget {
               subtitle: "Manage registered family members",
               color: Colors.blue,
               onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      "Family Members management coming soon",
-                    ),
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const FamilyMembersScreen(),
                   ),
                 );
               },
@@ -91,11 +92,10 @@ class ManageUsersScreen extends StatelessWidget {
               subtitle: "Manage registered caregivers",
               color: Colors.green,
               onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      "Caregiver management coming soon",
-                    ),
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const CaregiversScreen(),
                   ),
                 );
               },
@@ -115,12 +115,15 @@ class ManageUsersScreen extends StatelessWidget {
   }) {
     return GestureDetector(
       onTap: onTap,
+
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(20),
+
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(18),
+
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.05),
@@ -129,15 +132,18 @@ class ManageUsersScreen extends StatelessWidget {
             ),
           ],
         ),
+
         child: Row(
           children: [
             Container(
               width: 55,
               height: 55,
+
               decoration: BoxDecoration(
                 color: color.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(15),
               ),
+
               child: Icon(
                 icon,
                 color: color,

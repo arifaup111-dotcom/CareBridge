@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+  final String selectedRole;
+
+  const RegisterScreen({
+    super.key,
+    required this.selectedRole,
+  });
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -44,13 +49,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
       suffixIcon: suffixIcon,
       filled: true,
       fillColor: Colors.white,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+      ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
-        borderSide: const BorderSide(color: Color(0xFF4F8EF7), width: 2),
+        borderSide: const BorderSide(
+          color: Color(0xFF4F8EF7),
+          width: 2,
+        ),
       ),
     );
   }
@@ -85,7 +95,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 const Center(
                   child: Text(
                     "Create Account",
-                    style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
 
@@ -94,7 +107,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 const Center(
                   child: Text(
                     "Join CareBridge and stay connected",
-                    style: TextStyle(color: Colors.grey, fontSize: 16),
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: 16,
+                    ),
                   ),
                 ),
 
@@ -107,7 +123,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     icon: Icons.person_outline,
                   ),
                   validator: (value) =>
-                      value == null || value.isEmpty ? "Enter your name" : null,
+                      value == null || value.isEmpty
+                          ? "Enter your name"
+                          : null,
                 ),
 
                 const SizedBox(height: 18),
@@ -120,7 +138,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     icon: Icons.email_outlined,
                   ),
                   validator: (value) =>
-                      value == null || value.isEmpty ? "Enter email" : null,
+                      value == null || value.isEmpty
+                          ? "Enter email"
+                          : null,
                 ),
 
                 const SizedBox(height: 18),
@@ -132,9 +152,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     label: "Phone Number",
                     icon: Icons.phone_outlined,
                   ),
-                  validator: (value) => value == null || value.isEmpty
-                      ? "Enter phone number"
-                      : null,
+                  validator: (value) =>
+                      value == null || value.isEmpty
+                          ? "Enter phone number"
+                          : null,
                 ),
 
                 const SizedBox(height: 18),
@@ -182,7 +203,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                       onPressed: () {
                         setState(() {
-                          obscureConfirmPassword = !obscureConfirmPassword;
+                          obscureConfirmPassword =
+                              !obscureConfirmPassword;
                         });
                       },
                     ),
@@ -213,6 +235,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           await authService.registerUser(
                             email: emailController.text.trim(),
                             password: passwordController.text.trim(),
+                            name: nameController.text.trim(),
+                            phone: phoneController.text.trim(),
+                            role: widget.selectedRole,
                           );
 
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -223,15 +248,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                           Navigator.pop(context);
                         } catch (e) {
-                          ScaffoldMessenger.of(
-                            context,
-                          ).showSnackBar(SnackBar(content: Text(e.toString())));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(e.toString()),
+                            ),
+                          );
                         }
                       }
                     },
                     child: const Text(
                       "Register",
-                      style: TextStyle(fontSize: 18, color: Colors.white),
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),

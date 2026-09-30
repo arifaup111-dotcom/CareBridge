@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'manage_users_screen.dart';
+import 'admin_appointments_screen.dart';
 
 class AdminDashboard extends StatelessWidget {
   const AdminDashboard({super.key});
@@ -47,6 +49,109 @@ class AdminDashboard extends StatelessWidget {
 
             const SizedBox(height: 25),
 
+            // User Statistics
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('users')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState ==
+                    ConnectionState.waiting) {
+                  return const Center(
+                    child: CircularProgressIndicator(),
+                  );
+                }
+
+                if (snapshot.hasError) {
+                  return const Text(
+                    "Unable to load user statistics",
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontSize: 14,
+                    ),
+                  );
+                }
+
+                final users = snapshot.data?.docs ?? [];
+
+                int familyMembers = 0;
+                int caregivers = 0;
+                int elders = 0;
+
+                for (final user in users) {
+                  final data =
+                      user.data() as Map<String, dynamic>;
+
+                  if (data['role'] == 'Family Member') {
+                    familyMembers++;
+                  }
+
+                  if (data['role'] == 'Caregiver') {
+                    caregivers++;
+                  }
+
+                  if (data['role'] == 'Elder') {
+                    elders++;
+                  }
+                }
+
+                return SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 120,
+                        child: _buildStatCard(
+                          title: "Total Users",
+                          count: users.length.toString(),
+                          icon: Icons.people,
+                          color: Colors.blue,
+                        ),
+                      ),
+
+                      const SizedBox(width: 10),
+
+                      SizedBox(
+                        width: 120,
+                        child: _buildStatCard(
+                          title: "Family Members",
+                          count: familyMembers.toString(),
+                          icon: Icons.family_restroom,
+                          color: Colors.orange,
+                        ),
+                      ),
+
+                      const SizedBox(width: 10),
+
+                      SizedBox(
+                        width: 120,
+                        child: _buildStatCard(
+                          title: "Caregivers",
+                          count: caregivers.toString(),
+                          icon: Icons.medical_services,
+                          color: Colors.green,
+                        ),
+                      ),
+
+                      const SizedBox(width: 10),
+
+                      SizedBox(
+                        width: 120,
+                        child: _buildStatCard(
+                          title: "Elders",
+                          count: elders.toString(),
+                          icon: Icons.elderly,
+                          color: Colors.purple,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+
+            const SizedBox(height: 25),
+
             // Manage Users
             _buildDashboardCard(
               context,
@@ -58,7 +163,8 @@ class AdminDashboard extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const ManageUsersScreen(),
+                    builder: (context) =>
+                        const ManageUsersScreen(),
                   ),
                 );
               },
@@ -74,11 +180,11 @@ class AdminDashboard extends StatelessWidget {
               subtitle: "View and manage appointments",
               color: Colors.purple,
               onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      "Appointments management coming soon",
-                    ),
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        const AdminAppointmentsScreen(),
                   ),
                 );
               },
@@ -143,6 +249,69 @@ class AdminDashboard extends StatelessWidget {
     );
   }
 
+  // Statistics Card
+  Widget _buildStatCard({
+    required String title,
+    required String count,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 45,
+            height: 45,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              icon,
+              color: color,
+              size: 24,
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          Text(
+            count,
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF203864),
+            ),
+          ),
+
+          const SizedBox(height: 4),
+
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Dashboard Card
   Widget _buildDashboardCard(
     BuildContext context, {
     required IconData icon,
@@ -187,7 +356,8 @@ class AdminDashboard extends StatelessWidget {
 
             Expanded(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,

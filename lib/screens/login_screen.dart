@@ -9,7 +9,6 @@ class LoginScreen extends StatefulWidget {
   final String selectedRole;
 
   const LoginScreen({
-    
     super.key,
     this.selectedRole = 'Elder',
   });
@@ -163,7 +162,6 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F8FF),
-
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(
@@ -347,8 +345,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) =>
-                              const RegisterScreen(),
+                          builder: (context) => RegisterScreen(
+                            selectedRole: widget.selectedRole,
+                          ),
                         ),
                       );
                     },

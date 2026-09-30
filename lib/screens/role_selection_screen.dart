@@ -264,9 +264,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                       color: Color(0xFF243B53),
                     ),
                   ),
-
                   const SizedBox(height: 5),
-
                   Text(
                     subtitle,
                     style: TextStyle(
@@ -324,7 +322,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => const LoginScreen(),
+          builder: (context) => LoginScreen(
+            selectedRole: selectedRole!,
+          ),
         ),
       );
     }
