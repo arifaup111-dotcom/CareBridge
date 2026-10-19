@@ -1,0 +1,276 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    function currentRole() {
+      return get(userPath(request.auth.uid)).data.role;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(userPath(request.auth.uid))
+        && currentRole() == 'admin';
+    }
+
+    function isFamily() {
+      return signedIn()
+        && exists(userPath(request.auth.uid))
+        && currentRole() in ['family', 'caregiver'];
+    }
+
+    function isElder(uid) {
+      return signedIn()
+        && request.auth.uid == uid
+        && exists(userPath(uid))
+        && get(userPath(uid)).data.role == 'elder';
+    }
+
+    function isLinkedFamily(uid) {
+      return isFamily()
+        && get(userPath(request.auth.uid)).data.linkedElderId == uid;
+    }
+
+    function isAuthorizedCareUser(uid) {
+      return isElder(uid) || isLinkedFamily(uid) || isAdmin();
+    }
+
+    function validFamilyLinkUpdate(userUid) {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return !changed.hasAny([
+          'linkedElderId',
+          'linkedElderPublicId',
+          'linkedAt'
+        ])
+        || (
+          userUid == request.auth.uid
+          && request.resource.data.role in ['family', 'caregiver']
+          && (
+            request.resource.data.linkedElderId == null
+            && request.resource.data.linkedElderPublicId == null
+            || (
+              request.resource.data.linkedElderId is string
+              && request.resource.data.linkedElderPublicId is string
+              && exists(/databases/$(database)/documents/elderDirectory/$(request.resource.data.linkedElderPublicId))
+              && get(/databases/$(database)/documents/elderDirectory/$(request.resource.data.linkedElderPublicId)).data.elderUid
+                == request.resource.data.linkedElderId
+            )
+          )
+        );
+    }
+
+    match /users/{userUid} {
+      allow get: if signedIn()
+        && (
+          request.auth.uid == userUid
+          || isAdmin()
+          || isLinkedFamily(userUid)
+        );
+      allow list: if isAdmin();
+
+      allow create: if signedIn()
+        && request.auth.uid == userUid
+        && request.resource.data.role in ['elder', 'family']
+        && request.resource.data.name is string
+        && request.resource.data.email is string
+        && request.resource.data.keys().hasOnly([
+          'name', 'email', 'role', 'linkedElderId', 'elderId', 'phone',
+          'assistantName', 'createdAt'
+        ])
+        && (
+          !request.resource.data.keys().hasAny(['assistantName'])
+          || (
+            request.resource.data.assistantName is string
+            && request.resource.data.assistantName.size() > 0
+            && request.resource.data.assistantName.size() <= 30
+          )
+        )
+        && (
+          request.resource.data.role == 'elder'
+          && request.resource.data.elderId is string
+          || request.resource.data.role == 'family'
+          && request.resource.data.elderId == null
+        );
+
+      allow update: if isAdmin()
+        || (
+          signedIn()
+          && request.auth.uid == userUid
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name', 'age', 'elderId', 'assistantName', 'linkedElderId',
+            'linkedElderPublicId', 'linkedAt', 'updatedAt'
+          ])
+          && (
+            !request.resource.data.keys().hasAny(['assistantName'])
+            || request.resource.data.assistantName is string
+              && request.resource.data.assistantName.size() > 0
+              && request.resource.data.assistantName.size() <= 30
+          )
+          && validFamilyLinkUpdate(userUid)
+          && (
+            !resource.data.keys().hasAny(['elderId'])
+            || request.resource.data.elderId == resource.data.elderId
+          )
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // Firebase sign-in email is kept private from linked Family accounts.
+    match /userPrivate/{userUid} {
+      allow get: if signedIn()
+        && (request.auth.uid == userUid || isAdmin());
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['authEmail'])
+        && request.resource.data.authEmail is string
+        && (
+          isAdmin()
+          || (
+            request.auth.uid == userUid
+            && request.resource.data.authEmail == request.auth.token.email
+          )
+        );
+      allow update, delete: if false;
+    }
+
+    match /phoneChangeRequests/{requestId} {
+      allow get, list: if isAdmin()
+        || (
+          signedIn()
+          && resource.data.requestedBy == request.auth.uid
+        );
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          'userId', 'requestedBy', 'requestedPhone', 'requestedEmail',
+          'status', 'createdAt'
+        ])
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.requestedBy == request.auth.uid
+        && (
+          !('requestedPhone' in request.resource.data)
+          || (
+            request.resource.data.requestedPhone is string
+            && request.resource.data.requestedPhone.size() >= 7
+            && request.resource.data.requestedPhone.size() <= 20
+            && request.resource.data.requestedPhone.matches('^[+0-9 ()-]+$')
+          )
+        )
+        && (
+          !('requestedEmail' in request.resource.data)
+          || (
+            request.resource.data.requestedEmail is string
+            && request.resource.data.requestedEmail.size() >= 3
+            && request.resource.data.requestedEmail.size() <= 254
+            && request.resource.data.requestedEmail.matches('^[^@]+@[^@]+\\.[^@]+$')
+          )
+        )
+        && (
+          'requestedPhone' in request.resource.data
+          || 'requestedEmail' in request.resource.data
+        )
+        && request.resource.data.status == 'pending'
+        && exists(userPath(request.auth.uid));
+
+      allow update: if isAdmin()
+        && resource.data.status == 'pending'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'reviewedBy', 'reviewedAt'
+        ])
+        && request.resource.data.status in ['approved', 'rejected']
+        && request.resource.data.reviewedBy == request.auth.uid;
+
+      allow delete: if isAdmin();
+    }
+
+    match /elderDirectory/{publicId} {
+      allow get: if isFamily()
+        || isAdmin()
+        || (signedIn() && resource.data.elderUid == request.auth.uid);
+      allow list: if isAdmin();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['elderUid', 'elderId'])
+        && request.resource.data.elderUid == request.auth.uid
+        && request.resource.data.elderId == publicId
+        && getAfter(userPath(request.auth.uid)).data.role == 'elder'
+        && getAfter(userPath(request.auth.uid)).data.elderId == publicId;
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // The Elder app edits its own medicines/appointments and marks medicines
+    // as taken; the linked Family member manages the same documents.
+    match /elders/{elderUid}/medicines/{medicineId} {
+      allow read: if isAuthorizedCareUser(elderUid);
+      allow write: if isAuthorizedCareUser(elderUid);
+    }
+
+    match /elders/{elderUid}/appointments/{appointmentId} {
+      allow read: if isAuthorizedCareUser(elderUid);
+      allow write: if isAuthorizedCareUser(elderUid);
+    }
+
+    // Health readings recorded by the Elder or the linked Family member.
+    match /elders/{elderUid}/healthReadings/{readingId} {
+      allow read: if isAuthorizedCareUser(elderUid);
+      allow create: if isElder(elderUid) || isLinkedFamily(elderUid);
+      allow update, delete: if isAdmin();
+    }
+
+    // Consultation notes recorded by the Elder or linked Family member.
+    match /elders/{elderUid}/healthConsultations/{consultationId} {
+      allow read: if isAuthorizedCareUser(elderUid);
+      allow create: if isElder(elderUid) || isLinkedFamily(elderUid);
+      allow update, delete: if isAdmin();
+    }
+
+    // The Elder saves their own emergency contact, voice phrase and reminder
+    // times. Family may also edit reminder times (careReminders) and touch
+    // that document to trigger an alarm refresh on the Elder's phone.
+    match /elders/{elderUid}/settings/{settingId} {
+      allow read: if isAuthorizedCareUser(elderUid);
+      allow write: if isAdmin()
+        || isElder(elderUid)
+        || (settingId == 'careReminders' && isLinkedFamily(elderUid));
+    }
+
+    match /elders/{elderUid}/emergencies/{emergencyId} {
+      allow read: if isAuthorizedCareUser(elderUid);
+      allow create: if isElder(elderUid);
+      allow update: if isAdmin()
+        || (
+          isElder(elderUid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'latitude', 'longitude', 'locationTracking',
+            'locationUpdatedAt', 'trackingEndedAt'
+          ])
+          && request.resource.data.locationTracking is bool
+          && (
+            !request.resource.data.keys().hasAny(['latitude'])
+            || request.resource.data.latitude is number
+          )
+          && (
+            !request.resource.data.keys().hasAny(['longitude'])
+            || request.resource.data.longitude is number
+          )
+          && (
+            !request.resource.data.keys().hasAny(['locationUpdatedAt'])
+            || request.resource.data.locationUpdatedAt is timestamp
+          )
+          && (
+            !request.resource.data.keys().hasAny(['trackingEndedAt'])
+            || request.resource.data.trackingEndedAt is timestamp
+          )
+        );
+      allow delete: if isAdmin();
+    }
+  }
+}
