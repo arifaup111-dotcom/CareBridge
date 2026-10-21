@@ -3,13 +3,14 @@ import 'package:flutter/services.dart';
 /// Native Android bridge for an immediate emergency call.
 ///
 /// CareBridge already asks for CALL_PHONE permission. Using ACTION_CALL
-/// means an emergency voice command can place the call immediately instead
-/// of only opening the dialer with the number filled in.
+/// means the Emergency SOS action can place the call immediately instead of
+/// only opening the dialer with the number filled in.
 class EmergencyCallService {
   EmergencyCallService._();
 
-  static const MethodChannel _channel =
-      MethodChannel('carebridge/emergency_call');
+  static const MethodChannel _channel = MethodChannel(
+    'carebridge/emergency_call',
+  );
 
   static Future<bool> sendEmergencyLocationSms({
     required String phoneNumber,

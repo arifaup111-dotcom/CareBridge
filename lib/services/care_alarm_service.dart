@@ -1,31 +1,34 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
-import 'speech_output_service.dart';
+import 'care_reminder_planner.dart';
 
 class CareAlarmService {
   CareAlarmService._();
 
   static final CareAlarmService instance = CareAlarmService._();
 
+  static const int _trialNotificationId = 4302;
   static const int _mealNotificationBaseId = 4100;
   static const int _waterNotificationBaseId = 4200;
   static const int _wakeUpNotificationId = 4300;
   static const int _exerciseNotificationId = 4301;
-  static const int _trialNotificationId = 4302;
   static const int _medicineNotificationBaseId = 5000;
   static const int _appointmentNotificationBaseId = 6000;
-  static const int _maxAlarmsPerType = 50;
+  static const int _legacyAlarmsPerType = 50;
 
   static const MethodChannel _timezoneChannel = MethodChannel(
     'carebridge/system',
   );
+  static const MethodChannel _announcementChannel = MethodChannel(
+    'carebridge/reminder_announcements',
+  );
 
   final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
-  final SpeechOutputService _speechOutput = SpeechOutputService();
   Future<void>? _initialization;
 
   Future<void> _initialize() {
@@ -65,261 +68,128 @@ class CareAlarmService {
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         iOS: DarwinInitializationSettings(),
       ),
-      onDidReceiveNotificationResponse: (NotificationResponse response) {
-        final payload = response.payload;
-        if (payload != null && payload.startsWith('speech:')) {
-          final text = payload.substring(7).trim();
-          if (text.isNotEmpty) {
-            _speechOutput.speak(text).catchError((_) {});
-          }
-        }
-      },
     );
     if (initialized != true) {
       throw StateError('Care reminders could not initialize notifications.');
     }
   }
 
-  /// Announces a reminder aloud using Malayalam text-to-speech.
-  Future<void> speakAnnouncement(String text) async {
-    try {
-      await _speechOutput.speak(text);
-    } catch (_) {}
-  }
-
-  // ================================================================
-  // MEDICINE REMINDERS
-  // ================================================================
-
-  Future<void> scheduleMedicineReminders({
-    required List<Map<String, dynamic>> medicines,
-  }) async {
+  Future<bool> requestExactAlarmPermission() async {
     await _initialize();
-
-    // Clear previously scheduled medicine alarms
-    for (var i = 0; i < _maxAlarmsPerType; i++) {
-      await _notifications.cancel(_medicineNotificationBaseId + i);
-    }
-
     final android = _notifications
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
         >();
-    final exactAlarmAllowed =
-        await android?.canScheduleExactNotifications() ?? false;
-    final scheduleMode = exactAlarmAllowed
-        ? AndroidScheduleMode.exactAllowWhileIdle
-        : AndroidScheduleMode.inexactAllowWhileIdle;
-
-    final count = medicines.length > _maxAlarmsPerType
-        ? _maxAlarmsPerType
-        : medicines.length;
-
-    final now = tz.TZDateTime.now(tz.local);
-
-    for (var index = 0; index < count; index++) {
-      final med = medicines[index];
-      final timeStr = (med['time'] ?? '').toString();
-      final parsed = _parseTime(timeStr);
-      if (parsed == null) continue;
-
-      final name = (med['name'] ?? 'മരുന്ന്').toString();
-      final dosage = (med['dosage'] ?? '').toString();
-      final instruction = (med['instruction'] ?? '').toString();
-
-      var scheduledDate = tz.TZDateTime(
-        tz.local,
-        now.year,
-        now.month,
-        now.day,
-        parsed.$1,
-        parsed.$2,
-      );
-      if (!scheduledDate.isAfter(now)) {
-        scheduledDate = scheduledDate.add(const Duration(days: 1));
-      }
-
-      final body = [
-        if (dosage.isNotEmpty) 'അളവ്: $dosage',
-        if (instruction.isNotEmpty) instruction,
-      ].join(' · ');
-
-      await _notifications.zonedSchedule(
-        _medicineNotificationBaseId + index,
-        'മരുന്ന് ഓർമ്മപ്പെടുത്തൽ: $name',
-        body.isEmpty ? 'മരുന്ന് കഴിക്കാനുള്ള സമയമായി.' : body,
-        scheduledDate,
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'care_medicines',
-            'Medicine Reminders',
-            channelDescription: 'Daily scheduled alarms for medications',
-            importance: Importance.max,
-            priority: Priority.high,
-            sound: RawResourceAndroidNotificationSound('notification'),
-            playSound: true,
-            enableVibration: true,
-          ),
-          iOS: DarwinNotificationDetails(),
-        ),
-        androidScheduleMode: scheduleMode,
-        matchDateTimeComponents: DateTimeComponents.time,
-        payload: 'speech:മരുന്ന് കഴിക്കാനുള്ള സമയമായി. $name. $dosage.',
-      );
-    }
+    if (android == null) return true;
+    if (await android.canScheduleExactNotifications() ?? false) return true;
+    await android.requestExactAlarmsPermission();
+    return await android.canScheduleExactNotifications() ?? false;
   }
 
-  // ================================================================
-  // APPOINTMENT REMINDERS
-  // ================================================================
-
-  Future<void> scheduleAppointmentReminders({
+  Future<void> scheduleAllReminders({
+    required List<String> mealTimes,
+    required List<String> waterTimes,
+    required String? wakeUpTime,
+    required String? exerciseTime,
+    required List<Map<String, dynamic>> medicines,
     required List<Map<String, dynamic>> appointments,
   }) async {
     await _initialize();
+    final now = DateTime.now();
+    final reminders = <PlannedCareReminder>[
+      ...CareReminderPlanner.dailyReminders(
+        mealTimes: mealTimes,
+        waterTimes: waterTimes,
+        wakeUpTime: wakeUpTime,
+        exerciseTime: exerciseTime,
+        now: now,
+      ),
+      ...CareReminderPlanner.medicineReminders(medicines: medicines, now: now),
+      ...CareReminderPlanner.appointmentReminders(
+        appointments: appointments,
+        now: now,
+      ),
+    ];
 
-    for (var i = 0; i < _maxAlarmsPerType; i++) {
-      await _notifications.cancel(_appointmentNotificationBaseId + i);
+    await _cancelPreviousReminders();
+    final scheduleMode = await _androidScheduleMode();
+    final isAndroid =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+    if (isAndroid) {
+      await _announcementChannel.invokeMethod<void>('syncReminderAlarms', {
+        'reminders': reminders
+            .map((reminder) => reminder.toPlatformMap())
+            .toList(),
+      });
+      return;
     }
 
-    final android = _notifications
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >();
-    final exactAlarmAllowed =
-        await android?.canScheduleExactNotifications() ?? false;
-    final scheduleMode = exactAlarmAllowed
-        ? AndroidScheduleMode.exactAllowWhileIdle
-        : AndroidScheduleMode.inexactAllowWhileIdle;
-
-    final count = appointments.length > _maxAlarmsPerType
-        ? _maxAlarmsPerType
-        : appointments.length;
-
-    final now = tz.TZDateTime.now(tz.local);
-
-    for (var index = 0; index < count; index++) {
-      final appt = appointments[index];
-      final dateStr = (appt['date'] ?? '').toString().trim();
-      final timeStr = (appt['time'] ?? '').toString().trim();
-      final scheduledDate = _parseDateTime(dateStr, timeStr);
-      if (scheduledDate == null || !scheduledDate.isAfter(now)) continue;
-
-      final doctor = (appt['doctor'] ?? 'ഡോക്ടർ').toString();
-      final specialization = (appt['specialization'] ?? '').toString();
-      final hospital = (appt['hospital'] ?? '').toString();
-
-      final subtitle = [
-        if (specialization.isNotEmpty) specialization,
-        if (hospital.isNotEmpty) hospital,
-      ].join(', ');
-
+    for (final reminder in reminders) {
       await _notifications.zonedSchedule(
-        _appointmentNotificationBaseId + index,
-        'ഡോക്ടർ അപ്പോയിന്റ്മെന്റ്: $doctor',
-        subtitle.isEmpty ? 'അപ്പോയിന്റ്മെന്റ് സമയമായി.' : subtitle,
-        scheduledDate,
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'care_appointments',
-            'Appointment Reminders',
-            channelDescription: 'Scheduled doctor and hospital appointments',
-            importance: Importance.max,
-            priority: Priority.high,
-            sound: RawResourceAndroidNotificationSound('notification'),
-            playSound: true,
-            enableVibration: true,
-          ),
-          iOS: DarwinNotificationDetails(),
-        ),
+        reminder.id,
+        reminder.title,
+        reminder.body,
+        tz.TZDateTime.from(reminder.scheduledAt, tz.local),
+        NotificationDetails(iOS: const DarwinNotificationDetails()),
         androidScheduleMode: scheduleMode,
-        payload: 'speech:ഡോക്ടറെ കാണാനുള്ള അപ്പോയിന്റ്മെന്റ് സമയമായി. $doctor.',
+        matchDateTimeComponents: reminder.daily
+            ? DateTimeComponents.time
+            : null,
+        payload: 'carebridge:${reminder.type}:${reminder.key}',
       );
     }
   }
 
-  // ================================================================
-  // FOOD AND WATER REMINDERS
-  // ================================================================
-
-  Future<void> scheduleDailyReminders({
-    required List<String> mealTimes,
-    required List<String> waterTimes,
-    String wakeUpTime = '7:00 AM',
-    String exerciseTime = '8:00 AM',
-  }) async {
-    await _initialize();
-
-    for (var index = 0; index < _maxAlarmsPerType; index++) {
-      await _notifications.cancel(_mealNotificationBaseId + index);
-      await _notifications.cancel(_waterNotificationBaseId + index);
-    }
-    await _notifications.cancel(_wakeUpNotificationId);
-    await _notifications.cancel(_exerciseNotificationId);
-
+  Future<AndroidScheduleMode> _androidScheduleMode() async {
     final android = _notifications
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
         >();
     final exactAlarmAllowed =
         await android?.canScheduleExactNotifications() ?? false;
-    final scheduleMode = exactAlarmAllowed
+    return exactAlarmAllowed
         ? AndroidScheduleMode.exactAllowWhileIdle
         : AndroidScheduleMode.inexactAllowWhileIdle;
+  }
 
-    await _scheduleGroup(
-      mealTimes,
-      baseId: _mealNotificationBaseId,
-      title: 'ഭക്ഷണ സമയം (Meal Reminder)',
-      body: 'ഭക്ഷണം കഴിക്കാനുള്ള സമയമായി.',
-      speechAnnouncement: 'ഭക്ഷണം കഴിക്കാനുള്ള സമയമായി.',
-      channelId: 'care_meals',
-      channelName: 'Meal Reminders',
-      scheduleMode: scheduleMode,
-    );
-    await _scheduleGroup(
-      waterTimes,
-      baseId: _waterNotificationBaseId,
-      title: 'കുടിവെള്ള സമയം (Water Reminder)',
-      body: 'വെള്ളം കുടിക്കാനുള്ള സമയമായി. ദാഹം മാറ്റൂ.',
-      speechAnnouncement:
-          'വെള്ളം കുടിക്കാനുള്ള സമയമായി. ദയവായി വെള്ളം കുടിക്കൂ.',
-      channelId: 'care_water',
-      channelName: 'Water Reminders',
-      scheduleMode: scheduleMode,
-    );
-    await _scheduleGroup(
-      [wakeUpTime],
-      baseId: _wakeUpNotificationId,
-      title: 'എഴുന്നേൽക്കാനുള്ള സമയമായി',
-      body: 'സുപ്രഭാതം. പുതിയ ദിവസം സന്തോഷത്തോടെ ആരംഭിക്കാം.',
-      speechAnnouncement:
-          'സുപ്രഭാതം. എഴുന്നേൽക്കാനുള്ള സമയമായി. പുതിയ ദിവസം സന്തോഷത്തോടെ ആരംഭിക്കാം.',
-      channelId: 'care_wake_up',
-      channelName: 'Morning Wake-up',
-      scheduleMode: scheduleMode,
-    );
-    await _scheduleGroup(
-      [exerciseTime],
-      baseId: _exerciseNotificationId,
-      title: 'വ്യായാമ സമയം',
-      body: 'ആരോഗ്യത്തിന് അനുയോജ്യമായ ലഘുവ്യായാമം ചെയ്യാനുള്ള സമയമായി.',
-      speechAnnouncement:
-          'വ്യായാമം ചെയ്യാനുള്ള സമയമായി. ആരോഗ്യത്തിന് അനുയോജ്യമായ ലഘുവ്യായാമം ചെയ്യൂ.',
-      channelId: 'care_exercise',
-      channelName: 'Exercise Reminders',
-      scheduleMode: scheduleMode,
-    );
+  Future<void> _cancelPreviousReminders() async {
+    final pending = await _notifications.pendingNotificationRequests();
+    for (final request in pending) {
+      if (request.payload?.startsWith('carebridge:') == true) {
+        await _notifications.cancel(request.id);
+      }
+    }
+    for (final base in [
+      _mealNotificationBaseId,
+      _waterNotificationBaseId,
+      _wakeUpNotificationId,
+      _exerciseNotificationId,
+      _medicineNotificationBaseId,
+      _appointmentNotificationBaseId,
+    ]) {
+      final length =
+          base == _wakeUpNotificationId || base == _exerciseNotificationId
+          ? 1
+          : _legacyAlarmsPerType;
+      for (var index = 0; index < length; index++) {
+        await _notifications.cancel(base + index);
+      }
+    }
+  }
+
+  Future<void> clearCareReminders() async {
+    await _initialize();
+    await _cancelPreviousReminders();
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      await _announcementChannel.invokeMethod<void>('syncReminderAlarms', {
+        'reminders': const <Map<String, Object>>[],
+      });
+    }
   }
 
   Future<void> scheduleTrialReminder() async {
     await _initialize();
-    final android = _notifications
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >();
-    final exactAlarmAllowed =
-        await android?.canScheduleExactNotifications() ?? false;
+    await _notifications.cancel(_trialNotificationId);
     await _notifications.zonedSchedule(
       _trialNotificationId,
       'CareBridge പരീക്ഷണ ഓർമ്മപ്പെടുത്തൽ',
@@ -336,26 +206,18 @@ class CareAlarmService {
         ),
         iOS: DarwinNotificationDetails(),
       ),
-      androidScheduleMode: exactAlarmAllowed
-          ? AndroidScheduleMode.exactAllowWhileIdle
-          : AndroidScheduleMode.inexactAllowWhileIdle,
-      payload: 'speech:പത്ത് മിനിറ്റ് പരീക്ഷണ ഓർമ്മപ്പെടുത്തൽ ലഭിച്ചു.',
+      androidScheduleMode: await _androidScheduleMode(),
     );
-  }
-
-  Future<void> clearDailyReminders() async {
-    await _initialize();
-    for (var index = 0; index < _maxAlarmsPerType; index++) {
-      await _notifications.cancel(_mealNotificationBaseId + index);
-      await _notifications.cancel(_waterNotificationBaseId + index);
-    }
-    await _notifications.cancel(_wakeUpNotificationId);
-    await _notifications.cancel(_exerciseNotificationId);
   }
 
   Future<void> clearAllReminders() async {
     await _initialize();
     await _notifications.cancelAll();
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      await _announcementChannel.invokeMethod<void>('syncReminderAlarms', {
+        'reminders': const <Map<String, Object>>[],
+      });
+    }
   }
 
   void _setLocationFromCurrentOffset() {
@@ -368,115 +230,5 @@ class CareAlarmService {
       }
     }
     throw StateError('No time zone matches the device time zone offset.');
-  }
-
-  Future<void> _scheduleGroup(
-    List<String> times, {
-    required int baseId,
-    required String title,
-    required String body,
-    required String speechAnnouncement,
-    required String channelId,
-    required String channelName,
-    required AndroidScheduleMode scheduleMode,
-  }) async {
-    if (times.length > _maxAlarmsPerType) {
-      throw ArgumentError(
-        'No more than $_maxAlarmsPerType daily reminders of each type are supported.',
-      );
-    }
-
-    final now = tz.TZDateTime.now(tz.local);
-    for (var index = 0; index < times.length; index++) {
-      final time = _parseTime(times[index]);
-      if (time == null) {
-        continue;
-      }
-
-      var scheduledDate = tz.TZDateTime(
-        tz.local,
-        now.year,
-        now.month,
-        now.day,
-        time.$1,
-        time.$2,
-      );
-      if (!scheduledDate.isAfter(now)) {
-        scheduledDate = scheduledDate.add(const Duration(days: 1));
-      }
-
-      await _notifications.zonedSchedule(
-        baseId + index,
-        title,
-        body,
-        scheduledDate,
-        NotificationDetails(
-          android: AndroidNotificationDetails(
-            channelId,
-            channelName,
-            channelDescription: 'Scheduled reminders for elderly care',
-            importance: Importance.max,
-            priority: Priority.high,
-            enableVibration: true,
-          ),
-          iOS: const DarwinNotificationDetails(),
-        ),
-        androidScheduleMode: scheduleMode,
-        matchDateTimeComponents: DateTimeComponents.time,
-        payload: 'speech:$speechAnnouncement',
-      );
-    }
-  }
-
-  (int, int)? _parseTime(String raw) {
-    final match = RegExp(
-      r'^(\d{1,2}):(\d{2})\s*(AM|PM)?$',
-      caseSensitive: false,
-    ).firstMatch(raw.trim());
-    if (match == null) return null;
-    var hour = int.tryParse(match.group(1)!);
-    final minute = int.tryParse(match.group(2)!);
-    if (hour == null || minute == null || minute > 59) return null;
-
-    final meridiem = (match.group(3) ?? '').toUpperCase();
-    if (meridiem.isNotEmpty && (hour < 1 || hour > 12)) return null;
-    if (meridiem == 'PM' && hour < 12) hour += 12;
-    if (meridiem == 'AM' && hour == 12) hour = 0;
-    if (hour > 23) return null;
-    return (hour, minute);
-  }
-
-  tz.TZDateTime? _parseDateTime(String dateStr, String timeStr) {
-    final parsedTime = _parseTime(timeStr);
-    if (parsedTime == null) return null;
-
-    DateTime? date;
-    try {
-      date = DateTime.parse(dateStr);
-    } catch (_) {
-      final parts = dateStr.split(RegExp(r'[-/]'));
-      if (parts.length == 3) {
-        final p1 = int.tryParse(parts[0]);
-        final p2 = int.tryParse(parts[1]);
-        final p3 = int.tryParse(parts[2]);
-        if (p1 != null && p2 != null && p3 != null) {
-          if (p1 > 1000) {
-            date = DateTime(p1, p2, p3);
-          } else {
-            date = DateTime(p3, p2, p1);
-          }
-        }
-      }
-    }
-    if (date == null) return null;
-
-    return tz.TZDateTime(
-      tz.local,
-      date.year,
-      date.month,
-      date.day,
-      parsedTime.$1,
-      parsedTime.$2,
-    );
   }
 }

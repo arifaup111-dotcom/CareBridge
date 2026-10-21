@@ -1,4 +1,12 @@
 {
+	"functions": {
+		"source": "functions",
+		"codebase": "default",
+		"predeploy": [
+			"npm --prefix functions ci",
+			"npm --prefix functions run build"
+		]
+	},
 	"flutter": {
 		"platforms": {
 			"android": {

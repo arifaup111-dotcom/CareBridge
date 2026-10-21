@@ -3,10 +3,21 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
   static const String rememberLoginKey = 'rememberLogin';
+  static const bool defaultRememberLogin = true;
 
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  FirebaseAuth get _auth => FirebaseAuth.instance;
 
   FirebaseAuth get auth => _auth;
+
+  Future<bool> shouldRememberLogin() async {
+    final preferences = await SharedPreferences.getInstance();
+    return preferences.getBool(rememberLoginKey) ?? defaultRememberLogin;
+  }
+
+  Future<void> setRememberLogin(bool remember) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(rememberLoginKey, remember);
+  }
 
   // Register User
   Future<UserCredential> registerUser({
@@ -20,8 +31,6 @@ class AuthService {
   }
 
   Future<void> signOut() async {
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.remove(rememberLoginKey);
     await _auth.signOut();
   }
 }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
@@ -6,16 +7,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../services/gemini_service.dart';
 import '../services/care_alarm_service.dart';
+import '../services/appointment_schedule_formatter.dart';
 import '../services/emergency_call_service.dart';
+import '../services/english_voice_service.dart';
+import '../services/gemini_conversation_service.dart';
 import '../services/firestore_service.dart';
+import '../services/medicine_completion_matcher.dart';
+import '../services/medicine_schedule_formatter.dart';
 import '../services/permission_service.dart';
-import '../services/voice_service.dart';
-import '../services/voice_intent_router.dart';
-import '../services/background_voice_bridge.dart';
-import '../services/sherpa_wake_word_listener.dart';
 import '../services/emergency_location_bridge.dart';
+import '../services/voice_intent_router.dart';
 import 'medicines_screen.dart';
 import 'appointments_screen.dart';
 import 'reminders_screen.dart';
@@ -27,16 +29,6 @@ class ElderDashboard extends StatefulWidget {
 
   @override
   State<ElderDashboard> createState() => _ElderDashboardState();
-}
-
-enum AssistantLifecycleState {
-  disabled,
-  initializing,
-  waitingForWakeWord,
-  capturingCommand,
-  processingCommand,
-  speakingResponse,
-  error,
 }
 
 class _ElderDashboardState extends State<ElderDashboard>
@@ -166,49 +158,41 @@ class _ElderDashboardState extends State<ElderDashboard>
 
           if (!readOnly) const SizedBox(height: 12),
 
-          // ==========================================================
-          // CUSTOM EMERGENCY VOICE PHRASE
-          // ==========================================================
           if (!readOnly)
             GestureDetector(
-              onTap: () {
-                _showEmergencyPhraseDialog();
-              },
-
+              behavior: HitTestBehavior.opaque,
+              onTap: _showEmergencyPhraseDialog,
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
-
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
                 ),
-
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.mic_rounded, color: Color(0xFF4F8EF7), size: 25),
-
-                    SizedBox(width: 10),
-
+                    const Icon(
+                      Icons.record_voice_over_rounded,
+                      color: Colors.red,
+                      size: 25,
+                    ),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-
                         children: [
-                          Text(
-                            "Emergency Voice Phrase",
+                          const Text(
+                            'Emergency voice phrase',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
                               color: Color(0xFF243B53),
                             ),
                           ),
-
-                          SizedBox(height: 3),
-
+                          const SizedBox(height: 3),
                           Text(
-                            'Choose a phrase such as "Amma help"',
-                            style: TextStyle(
+                            'Say "$_emergencyPhrase" while voice listening is on',
+                            style: const TextStyle(
                               fontSize: 12,
                               color: Color(0xFF718096),
                             ),
@@ -216,82 +200,13 @@ class _ElderDashboardState extends State<ElderDashboard>
                         ],
                       ),
                     ),
-
-                    Icon(
-                      Icons.edit_rounded,
-                      color: Color(0xFF718096),
-                      size: 20,
-                    ),
+                    const Icon(Icons.edit_rounded, color: Color(0xFF718096)),
                   ],
                 ),
               ),
             ),
 
           if (!readOnly) const SizedBox(height: 12),
-
-          // NATURAL VOICE COMMANDS
-          // ==========================================================
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-
-            onTap: _toggleVoiceAssistant,
-
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-              ),
-
-              child: const Row(
-                children: [
-                  Icon(
-                    Icons.record_voice_over_rounded,
-                    color: Color(0xFF8A5CF6),
-                    size: 25,
-                  ),
-
-                  SizedBox(width: 10),
-
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-
-                      children: [
-                        Text(
-                          "Natural Voice Commands",
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF243B53),
-                          ),
-                        ),
-
-                        SizedBox(height: 3),
-
-                        Text(
-                          'Example: "I need help, call my daughter"',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFF718096),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  Icon(
-                    Icons.check_circle_rounded,
-                    color: Color(0xFF28A76B),
-                    size: 22,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
 
           // ==========================================================
           // EMERGENCY LOCATION
@@ -400,7 +315,7 @@ class _ElderDashboardState extends State<ElderDashboard>
 
           const Center(
             child: Text(
-              "Press SOS or use your emergency voice phrase.",
+              "Press SOS to contact your registered emergency contact.",
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12, color: Color(0xFF718096)),
             ),
@@ -410,78 +325,6 @@ class _ElderDashboardState extends State<ElderDashboard>
     );
   }
 
-  // ================================================================
-  // EMERGENCY PHRASE DIALOG
-  // ================================================================
-
-  void _showEmergencyPhraseDialog() {
-    final TextEditingController phraseController = TextEditingController();
-
-    showDialog(
-      context: context,
-
-      builder: (dialogCtx) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(22),
-          ),
-
-          title: const Text(
-            "Choose Emergency Phrase",
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-
-          content: TextField(
-            controller: phraseController,
-
-            decoration: InputDecoration(
-              hintText: "Example: Amma help",
-              prefixIcon: const Icon(Icons.mic_rounded),
-
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
-            ),
-          ),
-
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(dialogCtx);
-              },
-
-              child: const Text("Cancel"),
-            ),
-
-            ElevatedButton(
-              onPressed: () async {
-                final phrase = phraseController.text.trim();
-                Navigator.pop(dialogCtx);
-                if (phrase.isEmpty) return;
-
-                setState(() => _customEmergencyPhrases = [phrase]);
-                final elderId = _elderId ?? await _db.resolveElderId();
-                if (elderId != null) {
-                  _elderId = elderId;
-                  await _db.saveEmergencyPhrases(
-                    elderId: elderId,
-                    phrases: [phrase],
-                  );
-                }
-
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Emergency phrase saved: "$phrase"')),
-                );
-              },
-
-              child: const Text("Save"),
-            ),
-          ],
-        );
-      },
-    );
-  }
   // ================================================================
   // EMERGENCY CONTACT DIALOG
   // ================================================================
@@ -615,50 +458,40 @@ class _ElderDashboardState extends State<ElderDashboard>
 
   // YOUR EXISTING CODE STARTS HERE
 
-  final VoiceService _voice = VoiceService();
-  final GeminiService _geminiService = GeminiService();
   final FirestoreService _db = FirestoreService();
-
-  VoiceState _voiceState = VoiceState.idle;
+  final EnglishVoiceService _voice = EnglishVoiceService();
+  final GeminiConversationService _conversation = GeminiConversationService();
 
   String _emergencyContactName = "";
   String _emergencyContactPhone = "";
-  List<String> _customEmergencyPhrases = const [];
+  String _emergencyPhrase = VoiceIntentRouter.defaultEmergencyPhrase;
   bool _locationSharingEnabled = true;
+  bool _voiceEnabled = false;
+  bool _voiceInitialized = false;
+  bool _voiceStarting = false;
+  bool _voiceProcessing = false;
+  bool _awaitingWakeCommand = false;
+  bool _awaitingMedicineName = false;
+  bool _voiceSuspended = false;
+  bool _voiceSpeaking = false;
+  String _voiceStatus = 'Voice assistant is off.';
+  String _recognizedSpeech = '';
+  Timer? _voiceRestartTimer;
   String? _elderId;
+  String? _lastCareAlarmSignature;
   String? _publicElderId;
   String? _publicElderIdError;
   bool _loadingPublicElderId = true;
 
-  String _recognizedText = "";
-
-  // Voice assistant state
-  String _assistantResponse = 'Tap the mic and speak in Malayalam or English.';
-  String _assistantName = 'Care';
-  bool _assistantNameLoaded = false;
-  bool _voiceAssistantEnabled = true;
-  AssistantLifecycleState _assistantLifecycleState =
-      AssistantLifecycleState.initializing;
-  bool _handlingVoiceCommand = false;
-  bool _awaitingWakeCommand = false;
-  bool _conversationActive = false;
-  bool _voicePausedForLifecycle = false;
-  bool _suppressVoiceAutoRestart = false;
-  bool _voiceLoopStarting = false;
-  bool _backgroundWakeServiceStarted = false;
-  bool _backgroundWakeServicePaused = false;
-  bool _backgroundServiceRecoveryInProgress = false;
-  bool _returnToWakeAfterCommand = false;
-  bool _wakeCommandInProgress = false;
-  String? _pendingBackgroundWakePhrase;
-  final SherpaWakeWordListener _sherpaWakeWordListener =
-      SherpaWakeWordListener();
   bool _emergencyCallWasLaunched = false;
   bool _liveLocationFailureShown = false;
   String? _activeEmergencyId;
   String? _activeEmergencyElderId;
   DateTime? _lastEmergencyCallTime;
   final GlobalKey _emergencyCardKey = GlobalKey();
+  static const MethodChannel _reminderChannel = MethodChannel(
+    'carebridge/reminder_announcements',
+  );
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
   _careReminderSubscription;
 
@@ -670,12 +503,6 @@ class _ElderDashboardState extends State<ElderDashboard>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      BackgroundVoiceBridge.initialize(
-        onWake: _handleBackgroundWakeWord,
-        onError: _handleBackgroundWakeError,
-      );
-    }
     EmergencyLocationBridge.initialize(
       onLocation: (elderId, emergencyId, latitude, longitude) {
         unawaited(
@@ -690,441 +517,631 @@ class _ElderDashboardState extends State<ElderDashboard>
       onError: _showLiveLocationError,
     );
     _loadEmergencyData();
+    unawaited(_loadVoicePreference());
     _loadPublicElderId();
     _listenForCareReminders();
-    unawaited(_initializeAssistantAndVoice());
   }
 
-  void _handleBackgroundWakeError(String message) {
-    if (!mounted || !_voiceAssistantEnabled) return;
-    if (_backgroundWakeServiceStarted && !_backgroundWakeServicePaused) {
-      unawaited(_pauseBackgroundWakeService());
-    } else {
-      unawaited(_sherpaWakeWordListener.pause());
-    }
-    _setAssistantLifecycleState(AssistantLifecycleState.error);
-    setState(() => _assistantResponse = message);
+  Future<void> _loadVoicePreference() async {
+    final preferences = await SharedPreferences.getInstance();
+    final enabled = preferences.getBool('voice_assistant_enabled') ?? false;
+    if (!mounted || !enabled) return;
+    setState(() => _voiceEnabled = true);
+    await _startVoiceInteraction();
   }
 
-  Future<void> _initializeAssistantAndVoice() async {
-    _setAssistantLifecycleState(AssistantLifecycleState.initializing);
-    await _loadVoiceAssistantEnabled();
-    await _loadAssistantName();
+  Future<void> _setVoiceEnabled(bool enabled) async {
+    if (_voiceEnabled == enabled) return;
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool('voice_assistant_enabled', enabled);
     if (!mounted) return;
-    if (!_voiceAssistantEnabled) {
-      if (defaultTargetPlatform == TargetPlatform.android) {
-        await _sherpaWakeWordListener.pause();
-        await BackgroundVoiceBridge.stopForegroundService();
-      }
-      _setAssistantLifecycleState(AssistantLifecycleState.disabled);
-      return;
-    }
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      final notificationsAllowed =
-          await PermissionService.requestNotifications();
-      if (!notificationsAllowed && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Allow notifications to see the hands-free assistant status.',
-            ),
-          ),
-        );
-      }
-    }
-    await _initializeVoiceAssistant();
-    await _startBackgroundWakeService();
-    final pendingPhrase = _pendingBackgroundWakePhrase;
-    _pendingBackgroundWakePhrase = null;
-    if (pendingPhrase != null) {
-      await _handleBackgroundWakeWord(pendingPhrase);
-    }
-  }
-
-  void _setAssistantLifecycleState(AssistantLifecycleState next) {
-    if (_assistantLifecycleState == next) return;
-    debugPrint(
-      'ElderDashboard: voice state '
-      '${_assistantLifecycleState.name} -> ${next.name}',
-    );
-    _assistantLifecycleState = next;
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _loadVoiceAssistantEnabled() async {
-    try {
-      final preferences = await SharedPreferences.getInstance();
-      if (!mounted) return;
-      setState(() {
-        _voiceAssistantEnabled =
-            preferences.getBool('voice_assistant_enabled') ?? true;
-      });
-    } catch (error) {
-      debugPrint('ElderDashboard: voice preference load failed -> $error');
-      _setAssistantLifecycleState(AssistantLifecycleState.error);
-    }
-  }
-
-  Future<void> _setVoiceAssistantEnabled(bool enabled) async {
-    if (enabled == _voiceAssistantEnabled) return;
-    setState(() => _voiceAssistantEnabled = enabled);
-    try {
-      final preferences = await SharedPreferences.getInstance();
-      final saved = await preferences.setBool(
-        'voice_assistant_enabled',
-        enabled,
-      );
-      if (!saved) {
-        throw StateError('Could not persist assistant preference.');
-      }
-      if (!enabled) {
-        _conversationActive = false;
-        _awaitingWakeCommand = false;
-        _returnToWakeAfterCommand = false;
-        _wakeCommandInProgress = false;
-        _suppressVoiceAutoRestart = true;
-        try {
-          await _voice.cancelListening();
-          await _voice.stopSpeaking();
-          if (defaultTargetPlatform == TargetPlatform.android) {
-            await _sherpaWakeWordListener.pause();
-            await BackgroundVoiceBridge.stopForegroundService();
-          }
-        } finally {
-          _suppressVoiceAutoRestart = false;
-        }
-        _backgroundWakeServiceStarted = false;
-        _backgroundWakeServicePaused = false;
-        _setAssistantLifecycleState(AssistantLifecycleState.disabled);
-        if (mounted) {
-          setState(() {
-            _assistantResponse = 'Voice assistant is off.';
-            _recognizedText = '';
-          });
-        }
-        return;
-      }
-
-      if (!_voice.isInitialized) await _initializeVoiceAssistant();
-      if (!_voice.isSttAvailable) {
-        _setAssistantLifecycleState(AssistantLifecycleState.error);
-        return;
-      }
-      if (defaultTargetPlatform == TargetPlatform.android) {
-        await _startBackgroundWakeService();
-      } else {
-        _setAssistantLifecycleState(AssistantLifecycleState.waitingForWakeWord);
-        await _restartVoiceLoop();
-      }
-    } catch (error) {
-      debugPrint('ElderDashboard: assistant enable update failed -> $error');
-      if (mounted) {
-        setState(() {
-          _voiceAssistantEnabled = !enabled;
-          _assistantResponse = 'Could not update voice assistant setting.';
-        });
-      }
-      _setAssistantLifecycleState(AssistantLifecycleState.error);
-    }
-  }
-
-  Future<void> _startBackgroundWakeService() async {
-    if (defaultTargetPlatform != TargetPlatform.android ||
-        !_voiceAssistantEnabled ||
-        !mounted ||
-        !_voice.isInitialized ||
-        !_voice.isSttAvailable) {
-      return;
-    }
-    final started = await BackgroundVoiceBridge.startForegroundService(
-      wakePhrase: _assistantName,
-    );
-    if (!mounted) return;
-    _backgroundWakeServiceStarted = started;
-    _backgroundWakeServicePaused = false;
-    if (!started) {
-      _setAssistantLifecycleState(AssistantLifecycleState.error);
-      setState(
-        () => _assistantResponse =
-            'Wake listening could not start. Check microphone permission and keep CareBridge open.',
-      );
+    setState(() {
+      _voiceEnabled = enabled;
+      _voiceSuspended = false;
+      _awaitingWakeCommand = false;
+      _awaitingMedicineName = false;
+      _voiceStatus = enabled
+          ? 'Starting English voice assistant...'
+          : 'Voice assistant is off.';
+    });
+    _voiceRestartTimer?.cancel();
+    if (enabled) {
+      await _startVoiceInteraction();
     } else {
-      try {
-        await _sherpaWakeWordListener.start(
-          wakePhrase: _assistantName,
-          onWakeWord: _handleBackgroundWakeWord,
-          onError: (error, stackTrace) {
-            debugPrint('Sherpa wake detection failed: $error');
-            _handleBackgroundWakeError(
-              'Offline wake detection stopped. Re-enable the assistant to retry.',
-            );
-          },
-        );
-      } catch (error) {
-        debugPrint('Sherpa wake detection could not start: $error');
-        _backgroundWakeServiceStarted = false;
-        _backgroundWakeServicePaused = false;
-        await BackgroundVoiceBridge.stopForegroundService();
-        _setAssistantLifecycleState(AssistantLifecycleState.error);
-        if (mounted) {
-          setState(
-            () => _assistantResponse =
-                'Offline wake detection could not start: $error',
-          );
-        }
-        return;
-      }
-      _setAssistantLifecycleState(AssistantLifecycleState.waitingForWakeWord);
-      setState(
-        () => _assistantResponse =
-            'Listening for "$_assistantName". Say the name to wake me.',
-      );
+      await _voice.stopListening();
+      await _voice.stopSpeaking();
+      _conversation.clearHistory();
     }
   }
 
-  Future<void> _pauseBackgroundWakeService() async {
-    await _sherpaWakeWordListener.pause();
-    if (!_backgroundWakeServiceStarted || _backgroundWakeServicePaused) return;
-    final paused = await BackgroundVoiceBridge.pauseForegroundVoice();
-    if (paused) {
-      _backgroundWakeServicePaused = true;
-    }
-  }
-
-  Future<void> _resumeBackgroundWakeService() async {
-    if (!_voiceAssistantEnabled ||
-        !_backgroundWakeServiceStarted ||
-        (!_backgroundWakeServicePaused && _sherpaWakeWordListener.isRunning)) {
-      return;
-    }
-    if (_backgroundWakeServicePaused) {
-      final resumed = await BackgroundVoiceBridge.resumeForegroundVoice();
-      if (!resumed) {
-        _setAssistantLifecycleState(AssistantLifecycleState.error);
-        return;
-      }
-      _backgroundWakeServicePaused = false;
-    }
-    try {
-      await _sherpaWakeWordListener.start(
-        wakePhrase: _assistantName,
-        onWakeWord: _handleBackgroundWakeWord,
-        onError: (error, stackTrace) {
-          debugPrint('Sherpa wake detection failed: $error');
-          _handleBackgroundWakeError(
-            'Offline wake detection stopped. Re-enable the assistant to retry.',
-          );
-        },
-      );
-      _setAssistantLifecycleState(AssistantLifecycleState.waitingForWakeWord);
-    } catch (error) {
-      debugPrint('Sherpa wake detection could not resume: $error');
-      _setAssistantLifecycleState(AssistantLifecycleState.error);
-      _handleBackgroundWakeError(
-        'Offline wake detection could not resume: $error',
-      );
-    }
-  }
-
-  Future<void> _restoreBackgroundWakeService() async {
+  Future<void> _startVoiceInteraction() async {
     if (!mounted ||
-        !_voiceAssistantEnabled ||
-        defaultTargetPlatform != TargetPlatform.android ||
-        _backgroundServiceRecoveryInProgress) {
+        !_voiceEnabled ||
+        _voiceSuspended ||
+        _voiceStarting ||
+        _voiceProcessing ||
+        _voiceSpeaking ||
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.paused ||
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.inactive ||
+        _voice.isListening) {
       return;
     }
-    _backgroundServiceRecoveryInProgress = true;
+
+    _voiceStarting = true;
     try {
-      final state = await BackgroundVoiceBridge.foregroundVoiceState();
-      if (!mounted || !_voiceAssistantEnabled) return;
-      _backgroundWakeServiceStarted = state?['running'] == true;
-      _backgroundWakeServicePaused = state?['paused'] == true;
-      if (!_backgroundWakeServiceStarted) {
-        _backgroundWakeServicePaused = false;
-        await _startBackgroundWakeService();
-      } else if (_backgroundWakeServicePaused && !_conversationActive) {
-        await _resumeBackgroundWakeService();
-      } else if (!_sherpaWakeWordListener.isRunning && !_conversationActive) {
-        await _resumeBackgroundWakeService();
-      }
-      await _restartVoiceLoop();
-    } finally {
-      _backgroundServiceRecoveryInProgress = false;
-    }
-  }
-
-  Future<void> _handleBackgroundWakeWord(String phrase) async {
-    if (!_voiceAssistantEnabled || _wakeCommandInProgress) return;
-    if (!_assistantNameLoaded) {
-      _pendingBackgroundWakePhrase = phrase;
-      return;
-    }
-
-    final command = VoiceIntentRouter.commandAfterWakeWord(
-      phrase,
-      assistantName: _assistantName,
-    );
-    if (command == null) return;
-
-    _wakeCommandInProgress = true;
-    _returnToWakeAfterCommand = true;
-    await _pauseBackgroundWakeService();
-    if (_backgroundWakeServiceStarted && !_backgroundWakeServicePaused) {
-      _wakeCommandInProgress = false;
-      _returnToWakeAfterCommand = false;
-      _setAssistantLifecycleState(AssistantLifecycleState.error);
-      return;
-    }
-    _conversationActive = true;
-    _awaitingWakeCommand = false;
-    _setAssistantLifecycleState(
-      command.isEmpty
-          ? AssistantLifecycleState.capturingCommand
-          : AssistantLifecycleState.processingCommand,
-    );
-    if (command.isEmpty) {
-      if (mounted) {
+      if (!_voiceInitialized && !await PermissionService.requestMicrophone()) {
+        if (!mounted) return;
         setState(() {
-          _recognizedText = phrase;
-          _assistantResponse = 'ഞാൻ ഇവിടെയുണ്ട്. എന്താണ് സഹായം വേണ്ടത്?';
+          _voiceEnabled = false;
+          _voiceStatus = 'Allow microphone access to use voice interaction.';
         });
-      }
-      await _voice.speak(
-        _voice.isMalayalamTtsAvailable
-            ? 'ഞാൻ ഇവിടെയുണ്ട്. എന്താണ് സഹായം വേണ്ടത്?'
-            : 'I am here. How can I help?',
-      );
-      if (mounted && _conversationActive) {
-        await _startListening(forCommand: true);
-      }
-      return;
-    }
-    await _handleVoiceCommand(command);
-  }
-
-  Future<void> _loadAssistantName() async {
-    try {
-      final uid = _db.currentUid;
-      if (uid == null) return;
-      final profile = await _db.getUserProfile(uid);
-      final configuredName = (profile?['assistantName'] ?? '')
-          .toString()
-          .trim();
-      final profileName = (profile?['name'] ?? '').toString().trim();
-      final useProfileName =
-          profileName.isNotEmpty &&
-          (configuredName.isEmpty || configuredName.toLowerCase() == 'care');
-      var name = useProfileName ? profileName : configuredName;
-      if (name.isEmpty && mounted) {
-        name = await _showAssistantNameDialog(initialSetup: true) ?? '';
+        final preferences = await SharedPreferences.getInstance();
+        await preferences.setBool('voice_assistant_enabled', false);
+        return;
       }
 
-      if (name.isNotEmpty) {
-        if (mounted) {
-          setState(() {
-            _assistantName = name;
-            _assistantResponse =
-                'Tap the mic and speak in Malayalam or English.';
-          });
-        } else {
-          _assistantName = name;
+      if (!_voiceInitialized) {
+        final initialized = await _voice.initialize(
+          onResult: _handleVoiceResult,
+          onStatus: _handleVoiceStatus,
+          onError: _handleVoiceError,
+        );
+        if (!initialized) {
+          throw StateError('English speech recognition is unavailable.');
         }
-        _geminiService.setAssistantName(name);
-        final savedName = configuredName;
-        if (savedName != name) await _db.updateAssistantName(name);
+        _voiceInitialized = true;
       }
-    } catch (error) {
-      debugPrint('ElderDashboard: assistant name load failed -> $error');
+
+      await _voice.listen(onResult: _handleVoiceResult);
+      if (mounted && _voiceEnabled && !_voiceSuspended) {
+        setState(() => _voiceStatus = 'Listening for “Sara”.');
+      }
+    } catch (error, stackTrace) {
+      debugPrint(
+        'Could not start English voice interaction: $error\n$stackTrace',
+      );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not load the assistant name. Using Care.'),
-          ),
+        setState(
+          () => _voiceStatus = 'Voice listening could not start: $error',
         );
       }
     } finally {
-      _assistantNameLoaded = true;
-      if (mounted &&
-          _voice.isInitialized &&
-          defaultTargetPlatform != TargetPlatform.android) {
-        unawaited(_restartVoiceLoop());
+      _voiceStarting = false;
+    }
+  }
+
+  void _handleVoiceStatus(String status) {
+    if (!mounted) return;
+    if (status == 'listening') {
+      setState(() {
+        _voiceStatus = _awaitingMedicineName
+            ? 'Listening for the medicine name.'
+            : _awaitingWakeCommand
+            ? 'Listening for your care update.'
+            : 'Listening for “Sara”.';
+      });
+    } else if ((status == 'notListening' || status == 'done') &&
+        !_voiceProcessing &&
+        !_voiceSpeaking) {
+      _scheduleVoiceRestart();
+    }
+  }
+
+  void _handleVoiceError(String message, bool isPermanent) {
+    if (!mounted || !_voiceEnabled) return;
+    setState(() => _voiceStatus = 'Speech recognition: $message');
+    if (isPermanent) {
+      _showVoiceMessage(
+        'Voice listening stopped. Check microphone permission and speech recognition settings.',
+      );
+      return;
+    }
+    if (!_voiceProcessing && !_voiceSpeaking) _scheduleVoiceRestart();
+  }
+
+  void _scheduleVoiceRestart() {
+    _voiceRestartTimer?.cancel();
+    _voiceRestartTimer = Timer(const Duration(milliseconds: 500), () {
+      unawaited(_startVoiceInteraction());
+    });
+  }
+
+  void _handleVoiceResult(String text, bool isFinal) {
+    if (!mounted || text.trim().isEmpty) return;
+    setState(() => _recognizedSpeech = text.trim());
+    if (isFinal) unawaited(_processVoiceCommand(text.trim()));
+  }
+
+  Future<void> _processVoiceCommand(String text) async {
+    if (_voiceProcessing || !_voiceEnabled) return;
+    _voiceProcessing = true;
+    _voiceRestartTimer?.cancel();
+    try {
+      if (_voice.isAndroid) {
+        await _voice.pauseListening();
+      } else {
+        await _voice.stopListening();
+      }
+
+      if (VoiceIntentRouter.isEmergencyPhrase(
+        text,
+        customPhrase: _emergencyPhrase,
+      )) {
+        if (WidgetsBinding.instance.lifecycleState !=
+            AppLifecycleState.resumed) {
+          return;
+        }
+        await _voice.stopListening();
+        _awaitingWakeCommand = false;
+        _awaitingMedicineName = false;
+        _voiceSuspended = true;
+        await _handleEmergencyIntent(text);
+        if (!_emergencyCallWasLaunched) _voiceSuspended = false;
+        return;
+      }
+
+      if (_awaitingMedicineName) {
+        await _markMedicineTaken(text);
+        return;
+      }
+
+      final command = VoiceIntentRouter.commandForConversation(
+        text,
+        conversationActive: _awaitingWakeCommand,
+      );
+      if (command == null) return;
+      _awaitingWakeCommand = true;
+      if (command.isEmpty) {
+        await _speakDirectVoiceReply(
+          "Hello, I'm listening. You can ask me about today's medicines, "
+          "today's appointments, or tell me when you have eaten or had water.",
+        );
+        return;
+      }
+
+      switch (VoiceIntentRouter.classify(command)) {
+        case VoiceIntent.medicineScheduleRequested:
+          await _speakTodaysMedicineSchedule();
+        case VoiceIntent.appointmentScheduleRequested:
+          await _speakTodaysAppointmentSchedule();
+        case VoiceIntent.breakfastCompleted:
+          await _markCareCategoryCompleted(category: 'breakfast');
+        case VoiceIntent.lunchCompleted:
+          await _markCareCategoryCompleted(category: 'lunch');
+        case VoiceIntent.dinnerCompleted:
+          await _markCareCategoryCompleted(category: 'dinner');
+        case VoiceIntent.medicineTaken:
+          await _markMedicineTaken(command);
+        case VoiceIntent.mealCompleted:
+          await _markCareCategoryCompleted(category: 'meal');
+        case VoiceIntent.waterCompleted:
+          await _markCareCategoryCompleted(category: 'water');
+        case VoiceIntent.exerciseCompleted:
+          await _markCareCategoryCompleted(category: 'exercise');
+        case VoiceIntent.reminderCompleted:
+          await _completeMostRecentReminder();
+        case VoiceIntent.stop:
+          _awaitingWakeCommand = false;
+          await _speakVoiceResponse(
+            'The elder asked to end the conversation. Confirm briefly that listening remains enabled and they can say Sara to start again.',
+          );
+        case VoiceIntent.emergency:
+        case VoiceIntent.unknown:
+          await _speakVoiceResponse(
+            'No care update was saved. Respond naturally to what the elder said and ask one short clarifying question if needed. Do not claim an update was saved.',
+          );
+      }
+    } catch (error, stackTrace) {
+      debugPrint('Voice command processing failed: $error\n$stackTrace');
+      if (mounted) {
+        await _speakDirectVoiceReply(
+          'I could not save that update. Please try again.',
+        );
+      }
+    } finally {
+      _voiceProcessing = false;
+      if (_voiceEnabled && !_voiceSuspended && mounted) {
+        if (_voice.isAndroid) {
+          unawaited(_startVoiceInteraction());
+        } else {
+          _scheduleVoiceRestart();
+        }
       }
     }
   }
 
-  Future<String?> _showAssistantNameDialog({bool initialSetup = false}) async {
-    final controller = TextEditingController(
-      text: initialSetup ? '' : _assistantName,
+  Future<void> _markCareCategoryCompleted({required String category}) async {
+    final elderId = _elderId ?? await _db.resolveElderId();
+    if (elderId == null) {
+      throw StateError('Could not find the signed-in Elder account.');
+    }
+    _elderId = elderId;
+    await _db.markCareReminderCompleted(elderId: elderId, category: category);
+    await _clearRecentReminderForType(
+      category == 'breakfast' || category == 'lunch' || category == 'dinner'
+          ? 'meal'
+          : category,
     );
-    final name = await showDialog<String>(
-      context: context,
-      barrierDismissible: !initialSetup,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(
-          initialSetup ? 'Name your voice assistant' : 'Change assistant name',
+    await _speakDirectVoiceReply(
+      'Thank you. I marked your $category as completed and updated your family dashboard.',
+    );
+  }
+
+  Future<void> _markMedicineTaken(String spokenText) async {
+    final elderId = _elderId ?? await _db.resolveElderId();
+    if (elderId == null) {
+      throw StateError('Could not find the signed-in Elder account.');
+    }
+    _elderId = elderId;
+    final medicines = await _db.getMedicinesOnce(elderId);
+    final recentReminder = await _getRecentReminder();
+    final namedMedicines = MedicineCompletionMatcher.findBySpokenName(
+      medicines: medicines,
+      spokenText: spokenText,
+    );
+    final timeMatchedMedicines = namedMedicines.isEmpty
+        ? MedicineCompletionMatcher.findBySpokenTime(
+            medicines: medicines,
+            spokenText: spokenText,
+          )
+        : const <Map<String, dynamic>>[];
+    Map<String, dynamic>? medicineFromReminder;
+    if (namedMedicines.isEmpty &&
+        timeMatchedMedicines.isEmpty &&
+        recentReminder?['type'] == 'medicine') {
+      for (final item in medicines) {
+        if (item['id']?.toString() == recentReminder?['key']?.toString()) {
+          medicineFromReminder = item;
+          break;
+        }
+      }
+    }
+
+    Map<String, dynamic>? medicine;
+    if (namedMedicines.length == 1) {
+      medicine = namedMedicines.first;
+    } else if (namedMedicines.length > 1) {
+      medicine = null;
+    } else if (timeMatchedMedicines.length == 1) {
+      medicine = timeMatchedMedicines.single;
+    } else if (timeMatchedMedicines.length > 1) {
+      medicine = null;
+    } else if (medicineFromReminder != null) {
+      medicine = medicineFromReminder;
+    } else {
+      final notTaken = medicines
+          .where((item) => !FirestoreService.isMedicineTakenToday(item))
+          .toList();
+      if (notTaken.length == 1) medicine = notTaken.first;
+      if (notTaken.length > 1) {
+        _awaitingMedicineName = true;
+        await _speakDirectVoiceReply(
+          'I have more than one medicine scheduled. Please tell me its name or scheduled time.',
+        );
+        return;
+      }
+    }
+
+    if (medicine == null || medicine['id'] == null) {
+      final needsClarification =
+          namedMedicines.length > 1 ||
+          timeMatchedMedicines.length > 1 ||
+          (namedMedicines.isEmpty &&
+              timeMatchedMedicines.isEmpty &&
+              medicines.isNotEmpty);
+      _awaitingMedicineName = needsClarification;
+      await _speakDirectVoiceReply(
+        medicines.isEmpty
+            ? 'There are no medicines in your care plan. Please ask your family to add them if needed.'
+            : needsClarification
+            ? 'I found more than one possible medicine. Please say its name or the scheduled time, such as 12 PM.'
+            : 'I could not match that medicine to your care plan. Nothing was marked. Please say its name or scheduled time again.',
+      );
+      return;
+    }
+
+    _awaitingMedicineName = false;
+    final medicineName = (medicine['name'] ?? 'Medicine').toString();
+    await _db.markMedicineTaken(
+      elderId: elderId,
+      medicineId: medicine['id'].toString(),
+      taken: true,
+    );
+    await _clearRecentReminderForType('medicine');
+    await _speakDirectVoiceReply(
+      'Thank you. I marked $medicineName as taken and updated your family dashboard.',
+    );
+  }
+
+  Future<Map<Object?, Object?>?> _getRecentReminder() async {
+    if (!_voice.isAndroid || kIsWeb) return null;
+    final reminder = await _reminderChannel.invokeMapMethod<Object?, Object?>(
+      'getRecentReminder',
+    );
+    return reminder;
+  }
+
+  Future<void> _clearRecentReminderForType(String type) async {
+    final reminder = await _getRecentReminder();
+    if (reminder?['type'] != type || reminder?['id'] is! int) return;
+    final cleared = await _reminderChannel.invokeMethod<bool>(
+      'clearRecentReminder',
+      {'id': reminder!['id']},
+    );
+    if (cleared != true) {
+      debugPrint('The completed reminder context could not be cleared.');
+    }
+  }
+
+  Future<void> _completeMostRecentReminder() async {
+    final reminder = await _getRecentReminder();
+    if (reminder == null) {
+      await _speakDirectVoiceReply(
+        'I heard you. Please tell me what you completed: food, water, exercise, or medicine.',
+      );
+      return;
+    }
+
+    final type = reminder['type']?.toString();
+    if (type == 'meal' || type == 'water' || type == 'exercise') {
+      await _markCareCategoryCompleted(category: type!);
+      return;
+    }
+    if (type == 'medicine') {
+      final elderId = _elderId ?? await _db.resolveElderId();
+      if (elderId == null) {
+        throw StateError('Could not find the signed-in Elder account.');
+      }
+      final medicineId = reminder['key']?.toString();
+      final medicines = await _db.getMedicinesOnce(elderId);
+      Map<String, dynamic>? medicine;
+      for (final item in medicines) {
+        if (item['id']?.toString() == medicineId) {
+          medicine = item;
+          break;
+        }
+      }
+      if (medicine == null || medicine['id'] == null) {
+        await _speakDirectVoiceReply(
+          'I could not find that medicine in your care plan. Please ask your family to check it.',
+        );
+        return;
+      }
+      _elderId = elderId;
+      final name = (medicine['name'] ?? 'medicine').toString();
+      await _db.markMedicineTaken(
+        elderId: elderId,
+        medicineId: medicine['id'].toString(),
+        taken: true,
+      );
+      await _clearRecentReminderForType('medicine');
+      await _speakDirectVoiceReply(
+        'Thank you. I marked $name as taken and updated your family dashboard.',
+      );
+      return;
+    }
+
+    await _speakDirectVoiceReply(
+      'I heard you. Please tell me whether you completed food, water, exercise, or medicine.',
+    );
+  }
+
+  Future<void> _speakTodaysMedicineSchedule() async {
+    final elderId = _elderId ?? await _db.resolveElderId();
+    if (elderId == null) {
+      throw StateError('Could not find the signed-in Elder account.');
+    }
+    _elderId = elderId;
+    final medicines = await _db.getMedicinesOnce(elderId);
+    await _speakDirectVoiceReply(
+      MedicineScheduleFormatter.formatDailySchedule(medicines),
+    );
+  }
+
+  Future<void> _speakTodaysAppointmentSchedule() async {
+    final elderId = _elderId ?? await _db.resolveElderId();
+    if (elderId == null) {
+      throw StateError('Could not find the signed-in Elder account.');
+    }
+    _elderId = elderId;
+    final appointments = await _db.getAppointmentsOnce(elderId);
+    await _speakDirectVoiceReply(
+      AppointmentScheduleFormatter.formatTodaysAppointments(appointments),
+    );
+  }
+
+  Future<void> _speakDirectVoiceReply(String reply) async {
+    if (!mounted || !_voiceEnabled) return;
+    setState(() {
+      _voiceSpeaking = true;
+      _voiceStatus = reply;
+    });
+    try {
+      await _voice.speak(reply);
+    } catch (error, stackTrace) {
+      debugPrint('Could not speak the care schedule: $error\n$stackTrace');
+      _showVoiceMessage('Could not play the spoken response: $error');
+    } finally {
+      _voiceSpeaking = false;
+    }
+  }
+
+  Future<void> _speakVoiceResponse(String response) async {
+    if (!mounted || !_voiceEnabled) return;
+    setState(() {
+      _voiceSpeaking = true;
+      _voiceStatus = 'Preparing a reply...';
+    });
+    try {
+      final reply = await _conversation.reply(
+        userMessage: _recognizedSpeech,
+        outcome: response,
+      );
+      if (mounted) setState(() => _voiceStatus = reply);
+      await _voice.speak(reply);
+    } catch (error, stackTrace) {
+      debugPrint('Could not speak voice response: $error\n$stackTrace');
+      _showVoiceMessage('Could not play the spoken response: $error');
+      try {
+        await _voice.speak(
+          'I am having trouble connecting to my voice assistant right now. Please try again in a moment.',
+        );
+      } catch (fallbackError, fallbackStackTrace) {
+        debugPrint(
+          'Could not speak voice service error: '
+          '$fallbackError\n$fallbackStackTrace',
+        );
+      }
+    } finally {
+      _voiceSpeaking = false;
+    }
+  }
+
+  void _showVoiceMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Widget _buildVoiceInteractionCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF4F8EF7), Color(0xFF6FA8FF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.blue.withValues(alpha: 0.16),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.record_voice_over_rounded,
+                color: Colors.white,
+                size: 28,
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'English voice assistant',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 19,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Switch.adaptive(
+                value: _voiceEnabled,
+                activeThumbColor: Colors.white,
+                activeTrackColor: Colors.lightBlueAccent,
+                onChanged: _setVoiceEnabled,
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _voiceEnabled
+                ? _voiceStatus
+                : 'Turn on, then say “Sara” and your request. '
+                      'Listening works only while this screen is open.',
+            style: const TextStyle(color: Colors.white, height: 1.35),
+          ),
+          if (_recognizedSpeech.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Text(
+                'Heard: “$_recognizedSpeech”',
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+          if (_voiceEnabled) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Try: “Sara, what medicines do I have today?”, '
+              '“Sara, what appointments do I have today?”, “Sara, I had food”, '
+              'or “Sara, I drank water”. After a reminder, you can say '
+              '“done” or “I had it”. Emergency phrases work without the wake '
+              'phrase while listening is on.',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showEmergencyPhraseDialog() async {
+    final controller = TextEditingController(text: _emergencyPhrase);
+    final phrase = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Emergency voice phrase'),
         content: TextField(
           controller: controller,
           autofocus: true,
-          maxLength: 30,
-          textCapitalization: TextCapitalization.words,
+          maxLength: 50,
+          textCapitalization: TextCapitalization.sentences,
           decoration: const InputDecoration(
-            labelText: 'Name to call',
-            hintText: 'For example, Care',
+            hintText: 'For example: emergency help',
           ),
-          onSubmitted: (value) {
-            final normalized = value.trim();
-            if (normalized.isNotEmpty) Navigator.pop(dialogContext, normalized);
-          },
         ),
         actions: [
-          if (!initialSetup)
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-          FilledButton(
-            onPressed: () {
-              final normalized = controller.text.trim();
-              if (normalized.isNotEmpty) {
-                Navigator.pop(dialogContext, normalized);
-              }
-            },
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
             child: const Text('Save'),
           ),
         ],
       ),
     );
     controller.dispose();
-    return name;
-  }
+    if (phrase == null) return;
+    if (phrase.isEmpty) {
+      _showVoiceMessage('Enter an emergency phrase before saving.');
+      return;
+    }
 
-  Future<void> _changeAssistantName() async {
-    final name = await _showAssistantNameDialog();
-    if (name == null || name.trim().isEmpty || !mounted) return;
     try {
-      await _db.updateAssistantName(name);
+      final elderId = _elderId ?? await _db.resolveElderId();
+      if (elderId == null) {
+        throw StateError('Could not find the signed-in Elder account.');
+      }
+      await _db.saveEmergencyPhrase(elderId: elderId, phrase: phrase);
       if (!mounted) return;
-      setState(() {
-        _assistantName = name.trim();
-        _assistantResponse = 'Tap the mic and speak in Malayalam or English.';
-      });
-      _geminiService.setAssistantName(_assistantName);
-      _suppressVoiceAutoRestart = true;
-      try {
-        await _voice.cancelListening();
-      } finally {
-        _suppressVoiceAutoRestart = false;
-      }
-      await _startBackgroundWakeService();
-      await _restartVoiceLoop();
-    } catch (error) {
-      debugPrint('ElderDashboard: assistant name update failed -> $error');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not save the assistant name.')),
-        );
-      }
+      setState(() => _emergencyPhrase = phrase);
+      _showVoiceMessage('Emergency phrase saved.');
+    } catch (error, stackTrace) {
+      debugPrint('Could not save emergency phrase: $error\n$stackTrace');
+      _showVoiceMessage('Could not save the emergency phrase: $error');
     }
   }
 
@@ -1179,9 +1196,8 @@ class _ElderDashboardState extends State<ElderDashboard>
                 _syncCareAlarms(
                   meals,
                   water,
-                  wakeUpTime: (settings['wakeUpTime'] ?? '7:00 AM').toString(),
-                  exerciseTime: (settings['exerciseTime'] ?? '8:00 AM')
-                      .toString(),
+                  wakeUpTime: settings['wakeUpTime']?.toString(),
+                  exerciseTime: settings['exerciseTime']?.toString(),
                 ),
               );
             },
@@ -1197,41 +1213,84 @@ class _ElderDashboardState extends State<ElderDashboard>
   Future<void> _syncCareAlarms(
     List<String> mealTimes,
     List<String> waterTimes, {
-    String wakeUpTime = '7:00 AM',
-    String exerciseTime = '8:00 AM',
+    String? wakeUpTime,
+    String? exerciseTime,
   }) async {
     try {
-      if (!await PermissionService.requestNotifications()) {
-        await CareAlarmService.instance.clearDailyReminders();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Allow notifications to receive care alarms.'),
-            ),
-          );
-        }
-        return;
+      final id = _elderId ?? await _db.resolveElderId();
+      if (id == null) {
+        throw StateError('Could not find the signed-in Elder account.');
       }
-      await CareAlarmService.instance.scheduleDailyReminders(
+      final medicines = await _db.getMedicinesOnce(id);
+      final appointments = await _db.getAppointmentsOnce(id);
+      final signature = jsonEncode({
+        'mealTimes': mealTimes,
+        'waterTimes': waterTimes,
+        'wakeUpTime': wakeUpTime,
+        'exerciseTime': exerciseTime,
+        'medicines': medicines
+            .map(
+              (medicine) => [
+                medicine['id'],
+                medicine['name'],
+                medicine['time'],
+                medicine['dosage'],
+                medicine['instruction'],
+              ],
+            )
+            .toList(),
+        'appointments': appointments
+            .map(
+              (appointment) => [
+                appointment['id'],
+                appointment['doctor'],
+                appointment['specialization'],
+                appointment['hospital'],
+                appointment['date'],
+                appointment['time'],
+                appointment['status'],
+                appointment['cancelled'],
+                appointment['canceled'],
+                appointment['isCancelled'],
+                appointment['deleted'],
+              ],
+            )
+            .toList(),
+      });
+      if (_lastCareAlarmSignature == signature) return;
+      _lastCareAlarmSignature = signature;
+
+      final notificationsAllowed =
+          await PermissionService.requestNotifications();
+      final exactAlarmsAllowed = await CareAlarmService.instance
+          .requestExactAlarmPermission();
+      await CareAlarmService.instance.scheduleAllReminders(
         mealTimes: mealTimes,
         waterTimes: waterTimes,
         wakeUpTime: wakeUpTime,
         exerciseTime: exerciseTime,
+        medicines: medicines,
+        appointments: appointments,
       );
-
-      final id = _elderId ?? await _db.resolveElderId();
-      if (id != null) {
-        final medicines = await _db.getMedicinesOnce(id);
-        await CareAlarmService.instance.scheduleMedicineReminders(
-          medicines: medicines,
+      if (!notificationsAllowed && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Notifications are disabled. Turn them on in settings to see care reminders.',
+            ),
+          ),
         );
-        final appointments = await _db.getAppointmentsOnce(id);
-        await CareAlarmService.instance.scheduleAppointmentReminders(
-          appointments: appointments,
+      } else if (!exactAlarmsAllowed && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Exact alarm access is off. Android may deliver care reminders later than scheduled.',
+            ),
+          ),
         );
       }
-      await _scheduleTrialReminderOnce();
     } catch (error) {
+      _lastCareAlarmSignature = null;
       debugPrint('Could not schedule care alarms: $error');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1241,33 +1300,23 @@ class _ElderDashboardState extends State<ElderDashboard>
     }
   }
 
-  Future<void> _scheduleTrialReminderOnce() async {
-    final preferences = await SharedPreferences.getInstance();
-    const trialKey = 'carebridgeTrialReminderScheduled';
-    if (preferences.getBool(trialKey) == true) return;
-    await CareAlarmService.instance.scheduleTrialReminder();
-    await preferences.setBool(trialKey, true);
-  }
-
   Future<void> _loadEmergencyData() async {
     try {
       final id = await _db.resolveElderId();
       if (id == null) return;
       final data = await _db.getEmergencySettings(id);
       if (!mounted) return;
-      final phrases =
-          (data?['phrases'] as List?)
-              ?.map((e) => e.toString().trim())
-              .where((e) => e.isNotEmpty)
-              .toList() ??
-          <String>[];
       setState(() {
         _elderId = id;
         _emergencyContactName = (data?['contactName'] ?? '').toString().trim();
         _emergencyContactPhone = (data?['contactNumber'] ?? '')
             .toString()
             .trim();
-        _customEmergencyPhrases = phrases;
+        _emergencyPhrase =
+            (data?['emergencyPhrase'] ??
+                    VoiceIntentRouter.defaultEmergencyPhrase)
+                .toString()
+                .trim();
         _locationSharingEnabled = data?['locationSharingEnabled'] != false;
       });
     } catch (e) {
@@ -1275,722 +1324,13 @@ class _ElderDashboardState extends State<ElderDashboard>
     }
   }
 
-  Future<void> _initializeVoiceAssistant() async {
-    _voice.onStateChanged = (state) {
-      if (!mounted) return;
-      final wasListening = _voiceState == VoiceState.listening;
-      setState(() {
-        _voiceState = state;
-      });
-      if (state == VoiceState.speaking) {
-        _setAssistantLifecycleState(AssistantLifecycleState.speakingResponse);
-      } else if (state == VoiceState.processing) {
-        _setAssistantLifecycleState(AssistantLifecycleState.processingCommand);
-      }
-      if (state == VoiceState.idle &&
-          wasListening &&
-          _conversationActive &&
-          !_voicePausedForLifecycle &&
-          !_suppressVoiceAutoRestart &&
-          !_handlingVoiceCommand) {
-        unawaited(_restartVoiceLoop());
-      }
-    };
-
-    _voice.onPartialResult = (text) {
-      if (!mounted) return;
-      setState(() {
-        _recognizedText = text;
-      });
-    };
-
-    _voice.onFinalResult = (text) {
-      if (!mounted) return;
-      setState(() {
-        _recognizedText = text;
-      });
-      _handleVoiceCommand(text);
-    };
-
-    _voice.onError = (message) {
-      if (!mounted) return;
-      final wasSilence = message.contains('ഒന്നും കേൾക്കാനായില്ല');
-      _awaitingWakeCommand = false;
-      if (wasSilence) {
-        _wakeCommandInProgress = false;
-        _returnToWakeAfterCommand = false;
-        if (_conversationActive) {
-          _conversationActive = false;
-          setState(
-            () => _assistantResponse =
-                'സംഭാഷണം അവസാനിച്ചു. വീണ്ടും സംസാരിക്കാൻ $_assistantName എന്ന് വിളിക്കൂ.',
-          );
-        }
-        unawaited(_restartVoiceLoop());
-        return;
-      }
-      _conversationActive = false;
-      _wakeCommandInProgress = false;
-      _returnToWakeAfterCommand = false;
-      _setAssistantLifecycleState(AssistantLifecycleState.error);
-      setState(() => _assistantResponse = message);
-      unawaited(_restartVoiceLoop());
-    };
-
-    await _voice.initialize();
-
-    if (!mounted) return;
-    setState(() {
-      if (!_voice.isSttAvailable) {
-        _assistantResponse = _voice.capabilityNote();
-      } else if (!_voice.isMalayalamSttAvailable) {
-        _assistantResponse =
-            'ഈ ഫോണിൽ മലയാളം ശബ്ദ തിരിച്ചറിയൽ ലഭ്യമല്ല. Google voice typing-ൽ മലയാളം ഭാഷാ പാക്ക് ഇൻസ്റ്റാൾ ചെയ്യുക.';
-      } else if (!_voice.isMalayalamTtsAvailable) {
-        _assistantResponse =
-            'മലയാളത്തിൽ സംസാരിക്കാം. മറുപടി സ്ക്രീനിൽ കാണാം; Malayalam voice is not installed.';
-      } else {
-        _assistantResponse = 'Tap the mic and speak in Malayalam or English.';
-      }
-    });
-    if (_assistantNameLoaded &&
-        defaultTargetPlatform != TargetPlatform.android) {
-      await _restartVoiceLoop();
-    }
-  }
-
-  // ================================================================
-  // START LISTENING
-  // ================================================================
-
-  Future<void> _startListening({bool forCommand = false}) async {
-    if (_voiceLoopStarting) return;
-    _voiceLoopStarting = true;
-    try {
-      await _pauseBackgroundWakeService();
-      if (_backgroundWakeServiceStarted && !_backgroundWakeServicePaused) {
-        _setAssistantLifecycleState(AssistantLifecycleState.error);
-        return;
-      }
-      if (!_voice.isInitialized) {
-        await _initializeVoiceAssistant();
-      }
-
-      if (!_voiceAssistantEnabled || !_voice.isSttAvailable) {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(_voice.capabilityNote())));
-        }
-        return;
-      }
-
-      if (_voice.isListening) return;
-      if (mounted) {
-        setState(() {
-          _recognizedText = "";
-          _assistantResponse = forCommand
-              ? 'Listening for your request...'
-              : 'Listening for "$_assistantName"...';
-        });
-      }
-      _setAssistantLifecycleState(
-        forCommand
-            ? AssistantLifecycleState.capturingCommand
-            : AssistantLifecycleState.waitingForWakeWord,
-      );
-      final isMalayalamWakeName = RegExp(
-        r'[\u0D00-\u0D7F]',
-      ).hasMatch(_assistantName);
-      await _voice.startListening(
-        listenFor: const Duration(seconds: 60),
-        pauseFor: forCommand
-            ? const Duration(seconds: 3)
-            : const Duration(seconds: 4),
-        localeId: forCommand
-            ? _voice.commandLocale
-            : isMalayalamWakeName
-            ? _voice.wakeWordLocale
-            : _voice.englishWakeLocale,
-        useDictationMode: true,
-      );
-    } finally {
-      _voiceLoopStarting = false;
-    }
-  }
-
-  // ================================================================
-  // PROCESS VOICE COMMAND
-  // ================================================================
-
-  /// Entry point for anything the elder said, whether captured by
-  /// [_startListening]'s live stream. Classifies the sentence, then either
-  /// navigates, handles an emergency, or falls through to Gemini chat.
-  Future<void> _handleVoiceCommand(String command) async {
-    if (_handlingVoiceCommand) return;
-    _handlingVoiceCommand = true;
-
-    var text = command.trim();
-    try {
-      await _voice.cancelListening();
-      if (!_conversationActive) {
-        final activatedCommand = VoiceIntentRouter.commandAfterWakeWord(
-          text,
-          assistantName: _assistantName,
-        );
-        if (activatedCommand == null) {
-          if (mounted) {
-            setState(() {
-              _recognizedText = '';
-              _assistantResponse =
-                  'I did not hear "$_assistantName". Tap the mic and try again.';
-            });
-          }
-          await _restartVoiceLoop();
-          return;
-        }
-
-        _conversationActive = true;
-        text = activatedCommand;
-        if (text.isEmpty) {
-          _awaitingWakeCommand = false;
-          if (mounted) {
-            setState(() {
-              _recognizedText = _assistantName;
-              _assistantResponse = 'ഞാൻ ഇവിടെയുണ്ട്. എന്താണ് സഹായം വേണ്ടത്?';
-            });
-          }
-          await _voice.speak(
-            _voice.isMalayalamTtsAvailable
-                ? 'ഞാൻ ഇവിടെയുണ്ട്. എന്താണ് സഹായം വേണ്ടത്?'
-                : 'I am here. How can I help?',
-          );
-          await _startListening(forCommand: true);
-          return;
-        }
-        _awaitingWakeCommand = false;
-      }
-
-      if (text.isNotEmpty &&
-          _voiceAssistantEnabled &&
-          defaultTargetPlatform == TargetPlatform.android &&
-          _backgroundWakeServiceStarted &&
-          _backgroundWakeServicePaused) {
-        _returnToWakeAfterCommand = true;
-        _wakeCommandInProgress = true;
-      }
-
-      if (RegExp(
-        r"^(?:stop|stop listening|goodbye|bye|that(?: is|'s) all|നിർത്ത്|നിർത്തൂ|മതി|പിന്നെ സംസാരിക്കാം)$",
-        caseSensitive: false,
-      ).hasMatch(text)) {
-        _conversationActive = false;
-        await _respondAndSpeak(
-          VoiceService.containsMalayalam(text)
-              ? 'ശരി. വീണ്ടും മൈക്രോഫോൺ അമർത്തി $_assistantName എന്ന് പറഞ്ഞാൽ ഞാൻ സഹായിക്കാം.'
-              : 'Okay. Tap the mic and say "$_assistantName" when you need me.',
-        );
-        await _restartVoiceLoop();
-        return;
-      }
-
-      if (mounted) setState(() => _recognizedText = text);
-      _setAssistantLifecycleState(AssistantLifecycleState.processingCommand);
-      if (text.isEmpty) {
-        await _restartVoiceLoop();
-        return;
-      }
-
-      // Voice acknowledgment for taking medicine (e.g., "മരുന്ന് കഴിച്ചു", "ഗുളിക കഴിച്ചു")
-      if (RegExp(
-            r'(?:മരുന്ന്|ഗുളിക|ടാബ്‌ലെറ്റ്|medicine|pill)\s*(?:കഴിച്ചു|കുടിച്ചു|എടുത്തു|തീർത്തു|taken|took)',
-            caseSensitive: false,
-          ).hasMatch(text) ||
-          RegExp(
-            r'\b(?:took|had|taken)\s+(?:my\s+)?(?:medicine|medication|pill|tablet)s?\b',
-            caseSensitive: false,
-          ).hasMatch(text) ||
-          RegExp(
-            r'^(?:കഴിച്ചു|എടുത്തു|done|taken)$',
-            caseSensitive: false,
-          ).hasMatch(text)) {
-        await _handleMedicineTakenVoiceConfirmation(text);
-        await _restartVoiceLoop();
-        return;
-      }
-
-      if (_isCareReminderConfirmation(text)) {
-        await _handleCareReminderConfirmation(text);
-        await _restartVoiceLoop();
-        return;
-      }
-
-      final intent = VoiceIntentRouter.detect(
-        text,
-        customEmergencyPhrases: _customEmergencyPhrases,
-      );
-      debugPrint('Voice intent detected: ${intent.name}');
-
-      switch (intent) {
-        case VoiceIntentType.emergency:
-          await _handleEmergencyIntent(text);
-          return;
-        case VoiceIntentType.medicineToday:
-          await _handleMedicineVoiceQuery(text);
-          break;
-        case VoiceIntentType.appointmentToday:
-          await _handleAppointmentVoiceQuery(text);
-          break;
-        case VoiceIntentType.careReminders:
-          await _handleCareReminderVoiceQuery(text);
-          break;
-        case VoiceIntentType.openMedicines:
-          await _handleNavigationIntent(
-            malayalamMessage: "മരുന്നുകൾ തുറക്കുന്നു.",
-            englishMessage: "Opening your medicines.",
-            builder: (context) => const MedicinesScreen(readOnly: true),
-          );
-          return;
-        case VoiceIntentType.openAppointments:
-          await _handleNavigationIntent(
-            malayalamMessage: "അപ്പോയിന്റ്മെന്റുകൾ തുറക്കുന്നു.",
-            englishMessage: "Opening your appointments.",
-            builder: (context) => const AppointmentsScreen(readOnly: true),
-          );
-          return;
-        case VoiceIntentType.openReminders:
-          await _handleNavigationIntent(
-            malayalamMessage: "ഓർമ്മപ്പെടുത്തലുകൾ തുറക്കുന്നു.",
-            englishMessage: "Opening your reminders.",
-            builder: (context) => const RemindersScreen(),
-          );
-          return;
-        case VoiceIntentType.chat:
-          await _handleChatIntent(text);
-          break;
-      }
-
-      await _restartVoiceLoop();
-    } finally {
-      _handlingVoiceCommand = false;
-      if (_returnToWakeAfterCommand) {
-        _returnToWakeAfterCommand = false;
-        _wakeCommandInProgress = false;
-        _conversationActive = false;
-        _awaitingWakeCommand = false;
-        if (!_emergencyCallWasLaunched && _voiceAssistantEnabled) {
-          unawaited(_restartVoiceLoop());
-        }
-      }
-    }
-  }
-
-  Future<void> _handleMedicineTakenVoiceConfirmation(String sourceText) async {
-    final elderId = _elderId ?? await _db.resolveElderId();
-    if (elderId == null) {
-      await _respondAndSpeak(
-        _localizedResponse(
-          sourceText,
-          malayalam: 'മരുന്നുകളുടെ വിവരങ്ങൾ ലഭ്യമല്ല.',
-          english: 'Your medicine information is unavailable.',
-        ),
-      );
-      return;
-    }
-    try {
-      final medicines = await _db.getMedicinesOnce(elderId);
-      final untaken = medicines.where((m) => m['taken'] != true).toList();
-      if (untaken.isNotEmpty) {
-        final target = untaken.first;
-        await _db.markMedicineTaken(
-          elderId: elderId,
-          medicineId: target['id'].toString(),
-          taken: true,
-        );
-        final name = (target['name'] ?? 'മരുന്ന്').toString();
-        await _respondAndSpeak(
-          _localizedResponse(
-            sourceText,
-            malayalam: 'വളരെ നല്ലത്. $name കഴിച്ചതായി രേഖപ്പെടുത്തിയിട്ടുണ്ട്.',
-            english: 'Good. I marked $name as taken.',
-          ),
-        );
-      } else {
-        await _respondAndSpeak(
-          _localizedResponse(
-            sourceText,
-            malayalam:
-                'ഇന്നത്തെ മരുന്നുകളെല്ലാം കഴിച്ചതായി കാണുന്നു. വളരെ സന്തോഷം!',
-            english: 'All of today’s medicines are already marked as taken.',
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('Medicine taken voice confirmation error: $e');
-      await _respondAndSpeak(
-        _localizedResponse(
-          sourceText,
-          malayalam: 'മരുന്ന് കഴിച്ചതായി അടയാളപ്പെടുത്താൻ കഴിഞ്ഞില്ല.',
-          english: 'I could not update the medicine status.',
-        ),
-      );
-    }
-  }
-
-  String _localizedResponse(
-    String sourceText, {
-    required String malayalam,
-    required String english,
-  }) => VoiceService.containsMalayalam(sourceText) ? malayalam : english;
-
-  Future<void> _handleMedicineVoiceQuery(String text) async {
-    if (_elderId == null) await _loadEmergencyData();
-    final elderId = _elderId;
-    if (elderId == null) {
-      await _respondAndSpeak(
-        _localizedResponse(
-          text,
-          malayalam: 'മരുന്നുകളുടെ വിവരങ്ങൾ ലഭ്യമല്ല.',
-          english: 'Your medicine information is unavailable.',
-        ),
-      );
-      return;
-    }
-
-    try {
-      final medicines = await _db.getMedicinesOnce(elderId);
-      if (medicines.isEmpty) {
-        await _respondAndSpeak(
-          _localizedResponse(
-            text,
-            malayalam:
-                'ഇന്ന് നിങ്ങൾക്ക് പുതിയ മരുന്നുകൾ ഒന്നും രേഖപ്പെടുത്തിയിട്ടില്ല.',
-            english: 'There are no medicines scheduled for today.',
-          ),
-        );
-        return;
-      }
-      final untaken = medicines.where((m) => m['taken'] != true).toList();
-      if (untaken.isEmpty) {
-        await _respondAndSpeak(
-          _localizedResponse(
-            text,
-            malayalam:
-                'ഇന്നത്തെ മരുന്നുകളെല്ലാം നിങ്ങൾ കഴിച്ചു കഴിഞ്ഞു. വളരെ നല്ലത്!',
-            english: 'All of today’s medicines are marked as taken. Well done!',
-          ),
-        );
-        return;
-      }
-      final summary = untaken
-          .map((m) {
-            final name = (m['name'] ?? 'മരുന്ന്').toString();
-            final dosage = (m['dosage'] ?? '').toString();
-            final time = (m['time'] ?? '').toString();
-            return '$name $dosage $time'.trim();
-          })
-          .join(', ');
-      await _respondAndSpeak(
-        _localizedResponse(
-          text,
-          malayalam: 'ഇന്ന് കഴിക്കാനുള്ള മരുന്നുകൾ: $summary എന്നിവയാണ്.',
-          english: 'Your medicines for today are: $summary.',
-        ),
-      );
-    } catch (e) {
-      debugPrint('Medicine voice query failed: $e');
-      await _respondAndSpeak(
-        _localizedResponse(
-          text,
-          malayalam: 'മരുന്നുകളുടെ വിവരങ്ങൾ എടുക്കാൻ കഴിഞ്ഞില്ല.',
-          english: 'I could not load your medicine information.',
-        ),
-      );
-    }
-  }
-
-  Future<void> _handleAppointmentVoiceQuery(String text) async {
-    if (_elderId == null) await _loadEmergencyData();
-    final elderId = _elderId;
-    if (elderId == null) {
-      await _respondAndSpeak(
-        _localizedResponse(
-          text,
-          malayalam: 'അപ്പോയിന്റ്മെന്റുകളുടെ വിവരങ്ങൾ ലഭ്യമല്ല.',
-          english: 'Your appointment information is unavailable.',
-        ),
-      );
-      return;
-    }
-
-    try {
-      final appointments = await _db.getAppointmentsOnce(elderId);
-      final now = DateTime.now();
-      final today = '${now.day}/${now.month}/${now.year}';
-      final todaysAppointments = appointments
-          .where((appointment) => appointment['date']?.toString() == today)
-          .toList();
-      if (todaysAppointments.isEmpty) {
-        await _respondAndSpeak(
-          _localizedResponse(
-            text,
-            malayalam: 'ഇന്ന് പുതിയ അപ്പോയിന്റ്മെന്റുകൾ ഒന്നും ഇല്ല.',
-            english: 'There are no appointments recorded for today.',
-          ),
-        );
-        return;
-      }
-      final summary = todaysAppointments
-          .map((a) {
-            final doc = (a['doctor'] ?? 'ഡോക്ടർ').toString();
-            final hosp = (a['hospital'] ?? '').toString();
-            final time = (a['time'] ?? '').toString();
-            final details = [
-              doc,
-              hosp,
-              time,
-            ].where((value) => value.trim().isNotEmpty).join(', ');
-            return details;
-          })
-          .join(', ');
-      await _respondAndSpeak(
-        _localizedResponse(
-          text,
-          malayalam: 'ഇന്നത്തെ അപ്പോയിന്റ്മെന്റ്: $summary ആണ്.',
-          english: 'Your appointments are: $summary.',
-        ),
-      );
-    } catch (e) {
-      debugPrint('Appointment voice query failed: $e');
-      await _respondAndSpeak(
-        _localizedResponse(
-          text,
-          malayalam: 'അപ്പോയിന്റ്മെന്റുകളുടെ വിവരങ്ങൾ എടുക്കാൻ കഴിഞ്ഞില്ല.',
-          english: 'I could not load your appointment information.',
-        ),
-      );
-    }
-  }
-
-  Future<void> _handleCareReminderVoiceQuery(String text) async {
-    if (_elderId == null) await _loadEmergencyData();
-    final elderId = _elderId;
-    if (elderId == null) {
-      await _respondAndSpeak(
-        _localizedResponse(
-          text,
-          malayalam: 'ഓർമ്മപ്പെടുത്തലുകളുടെ വിവരങ്ങൾ ലഭ്യമല്ല.',
-          english: 'Your reminder information is unavailable.',
-        ),
-      );
-      return;
-    }
-
-    try {
-      final settings = await _db.getCareReminderSettings(elderId);
-      final mealTimes = (settings?['mealTimes'] as List? ?? const [])
-          .map((time) => time.toString())
-          .toList();
-      final waterTimes = (settings?['waterTimes'] as List? ?? const [])
-          .map((time) => time.toString())
-          .toList();
-      final isWater =
-          text.contains('വെള്ളം') ||
-          text.contains('കുടി') ||
-          text.contains('ദാഹം') ||
-          text.toLowerCase().contains('water');
-      if (isWater) {
-        final waterStr = waterTimes.isEmpty
-            ? 'നിശ്ചയിച്ചിട്ടില്ല'
-            : waterTimes.join(', ');
-        await _respondAndSpeak(
-          _localizedResponse(
-            text,
-            malayalam:
-                'വെള്ളം കുടിക്കാനുള്ള സമയങ്ങൾ: $waterStr ആണ്. ആവശ്യത്തിന് വെള്ളം കുടിക്കാൻ ശ്രദ്ധിക്കൂ.',
-            english: 'Your water reminders are at: $waterStr.',
-          ),
-        );
-      } else {
-        final mealStr = mealTimes.isEmpty
-            ? 'നിശ്ചയിച്ചിട്ടില്ല'
-            : mealTimes.join(', ');
-        await _respondAndSpeak(
-          _localizedResponse(
-            text,
-            malayalam:
-                'ഭക്ഷണ സമയങ്ങൾ: $mealStr ആണ്. കൃത്യസമയത്ത് ഭക്ഷണം കഴിക്കൂ.',
-            english: 'Your meal reminders are at: $mealStr.',
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('Care reminder voice query failed: $e');
-      await _respondAndSpeak(
-        _localizedResponse(
-          text,
-          malayalam: 'ഓർമ്മപ്പെടുത്തലുകൾ ലഭ്യമാക്കാൻ കഴിഞ്ഞില്ല.',
-          english: 'I could not load your reminders.',
-        ),
-      );
-    }
-  }
-
-  bool _isCareReminderConfirmation(String text) {
-    final lower = text.toLowerCase();
-    final confirmsAction =
-        RegExp(
-          r'(?:കഴിച്ചു|കഴിച്ചുകഴിഞ്ഞു|ഭക്ഷിച്ചു|കുടിച്ചു|കുടിച്ചുകഴിഞ്ഞു)',
-        ).hasMatch(lower) ||
-        RegExp(r'\b(?:drank|had|ate|finished)\b').hasMatch(lower);
-    if (!confirmsAction) return false;
-
-    final mentionsWater =
-        lower.contains('വെള്ളം') ||
-        lower.contains('ദാഹം') ||
-        lower.contains('water') ||
-        lower.contains('drink');
-    final mentionsMeal =
-        lower.contains('ഭക്ഷണം') ||
-        lower.contains('ഊണ്') ||
-        lower.contains('ഭക്ഷിച്ചു') ||
-        lower.contains('meal') ||
-        lower.contains('food') ||
-        lower.contains('breakfast') ||
-        lower.contains('lunch') ||
-        lower.contains('dinner') ||
-        lower.contains('ate');
-    return mentionsWater || mentionsMeal;
-  }
-
-  Future<void> _handleCareReminderConfirmation(String text) async {
-    if (_elderId == null) await _loadEmergencyData();
-    final elderId = _elderId;
-    if (elderId == null) {
-      await _respondAndSpeak(
-        _localizedResponse(
-          text,
-          malayalam: 'ഓർമ്മപ്പെടുത്തലുകളുടെ വിവരങ്ങൾ ലഭ്യമല്ല.',
-          english: 'Your reminder information is unavailable.',
-        ),
-      );
-      return;
-    }
-
-    final lower = text.toLowerCase();
-    final isWater =
-        lower.contains('വെള്ളം') ||
-        lower.contains('ദാഹം') ||
-        lower.contains('water') ||
-        lower.contains('drink');
-    final category = isWater ? 'water' : 'meal';
-    try {
-      await _db.markCareReminderCompleted(elderId: elderId, category: category);
-      final message = isWater
-          ? _localizedResponse(
-              text,
-              malayalam:
-                  'വെള്ളം കുടിച്ചതായി രേഖപ്പെടുത്തി. നിങ്ങളുടെ കുടുംബത്തിനും ഇത് കാണാം.',
-              english: 'Water intake recorded. Your family can see the update.',
-            )
-          : _localizedResponse(
-              text,
-              malayalam:
-                  'ഭക്ഷണം കഴിച്ചതായി രേഖപ്പെടുത്തി. നിങ്ങളുടെ കുടുംബത്തിനും ഇത് കാണാം.',
-              english: 'Meal recorded. Your family can see the update.',
-            );
-      await _respondAndSpeak(message);
-    } catch (error) {
-      debugPrint('Care reminder confirmation failed: $error');
-      await _respondAndSpeak(
-        _localizedResponse(
-          text,
-          malayalam:
-              'ഇത് രേഖപ്പെടുത്താൻ കഴിഞ്ഞില്ല. ഇന്റർനെറ്റ് കണക്ഷൻ പരിശോധിക്കൂ.',
-          english:
-              'I could not save that update. Please check your connection.',
-        ),
-      );
-    }
-  }
-
-  Future<void> _respondAndSpeak(String message) async {
-    if (!mounted) return;
-    setState(() => _assistantResponse = message);
-    _setAssistantLifecycleState(AssistantLifecycleState.speakingResponse);
-    await _voice.speak(message);
-    if (_voiceAssistantEnabled) {
-      _setAssistantLifecycleState(AssistantLifecycleState.processingCommand);
-    }
-  }
-
-  Future<void> _restartVoiceLoop() async {
-    if (!mounted ||
-        !_voiceAssistantEnabled ||
-        _handlingVoiceCommand ||
-        !_assistantNameLoaded ||
-        !_voice.isInitialized ||
-        _voicePausedForLifecycle ||
-        WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
-        _voice.isListening ||
-        _voiceLoopStarting) {
-      return;
-    }
-    if (_conversationActive || _awaitingWakeCommand) {
-      await _startListening(forCommand: _conversationActive);
-    } else {
-      await _resumeBackgroundWakeService();
-    }
-  }
-
-  /// Speaks a short confirmation, then pushes the matched screen.
-  ///
-  /// Used for every voice-triggered navigation so the elder always
-  /// hears what's about to happen before the screen changes — jumping
-  /// straight to a new screen with no warning is disorienting.
-  Future<void> _handleNavigationIntent({
-    required String malayalamMessage,
-    required String englishMessage,
-    required WidgetBuilder builder,
-  }) async {
-    final message = VoiceService.containsMalayalam(_recognizedText)
-        ? malayalamMessage
-        : englishMessage;
-
-    if (mounted) {
-      setState(() {
-        _assistantResponse = message;
-      });
-    }
-
-    await _voice.speak(message);
-
-    if (!mounted) return;
-
-    await Navigator.push(context, MaterialPageRoute(builder: builder));
-
-    if (!mounted) return;
-
-    setState(() {
-      selectedIndex = 0;
-      _recognizedText = "";
-      _assistantResponse = 'Tap the mic and speak in Malayalam or English.';
-    });
-    await _restartVoiceLoop();
-  }
-
-  /// Critical voice phrase: record the emergency and immediately call the
-  /// primary contact saved in Firestore. Location is recorded when enabled.
   Future<void> _handleEmergencyIntent(String triggerPhrase) async {
-    _awaitingWakeCommand = false;
-    await _voice.cancelListening();
     // Debounce calls within 15 seconds to prevent accidental duplicate dialing
     if (_lastEmergencyCallTime != null &&
         DateTime.now().difference(_lastEmergencyCallTime!).inSeconds < 15) {
-      await _respondAndSpeak(
+      _showEmergencyMessage(
         'അടിയന്തര കോൾ ഇതിനകം ആരംഭിച്ചിട്ടുണ്ട്. ദയവായി അല്പം കാത്തിരിക്കൂ.',
       );
-      await _restartVoiceLoop();
       return;
     }
     _lastEmergencyCallTime = DateTime.now();
@@ -2038,12 +1378,11 @@ class _ElderDashboardState extends State<ElderDashboard>
     }
 
     if (phone.isEmpty) {
-      await _respondAndSpeak(
+      _showEmergencyMessage(
         eventRecorded
             ? 'അടിയന്തര സംഭവം രേഖപ്പെടുത്തി. അടിയന്തര കോൺടാക്ട് നമ്പർ സജ്ജീകരിച്ചിട്ടില്ല; SOS സഹായം ലഭ്യമാക്കാൻ Emergency Settings തുറന്ന് നമ്പർ ചേർക്കുക.'
             : 'അടിയന്തര കോൺടാക്ട് നമ്പർ സജ്ജീകരിച്ചിട്ടില്ല, സംഭവവും രേഖപ്പെടുത്താനായില്ല. സഹായത്തിനായി സമീപത്തുള്ള ഒരാളോട് പറയുക.',
       );
-      await _restartVoiceLoop();
       return;
     }
 
@@ -2066,16 +1405,14 @@ class _ElderDashboardState extends State<ElderDashboard>
       }
     }
 
-    if (mounted) {
-      setState(() {
-        _assistantResponse = _emergencyContactName.isEmpty
-            ? 'അടിയന്തര സഹായത്തിനായി കോൾ ആരംഭിക്കുന്നു.'
-            : '$_emergencyContactName നെ വിളിക്കുന്നു.';
-      });
-    }
+    _showEmergencyMessage(
+      _emergencyContactName.isEmpty
+          ? 'അടിയന്തര സഹായത്തിനായി കോൾ ആരംഭിക്കുന്നു.'
+          : '$_emergencyContactName നെ വിളിക്കുന്നു.',
+    );
 
     if (!await PermissionService.requestPhone()) {
-      await _respondAndSpeak(
+      _showEmergencyMessage(
         eventRecorded
             ? 'അടിയന്തര സംഭവം രേഖപ്പെടുത്തി, പക്ഷേ ഫോൺ കോളിന് അനുമതി ലഭിച്ചില്ല. Phone permission അനുവദിക്കുക.'
             : 'അടിയന്തര സംഭവം രേഖപ്പെടുത്താനായില്ല, ഫോൺ കോളിനും അനുമതി ലഭിച്ചില്ല. സമീപത്തുള്ള ഒരാളോട് സഹായം ചോദിക്കുക.',
@@ -2085,7 +1422,6 @@ class _ElderDashboardState extends State<ElderDashboard>
           context,
         ).showSnackBar(SnackBar(content: Text(emergencySmsStatus)));
       }
-      await _restartVoiceLoop();
       return;
     }
 
@@ -2112,18 +1448,18 @@ class _ElderDashboardState extends State<ElderDashboard>
 
     _emergencyCallWasLaunched = true;
     final called = await EmergencyCallService.call(phone);
-    if (called && mounted) {
-      setState(() {
-        _assistantResponse = eventRecorded
+    if (called) {
+      _showEmergencyMessage(
+        eventRecorded
             ? '${_emergencyContactName.isEmpty ? 'അടിയന്തര കോൾ ആരംഭിച്ചു.' : '$_emergencyContactName നെ വിളിക്കാൻ കോൾ ആരംഭിച്ചു.'} '
                   '${liveLocationStarted ? 'കുടുംബത്തിനായി തത്സമയ ലൊക്കേഷൻ പങ്കിടൽ ആരംഭിക്കുന്നു.' : 'തത്സമയ ലൊക്കേഷൻ ലഭ്യമല്ല.'} '
                   '$emergencySmsStatus'
-            : 'കോൾ ആരംഭിച്ചു, പക്ഷേ അടിയന്തര സംഭവം രേഖപ്പെടുത്താനായില്ല.';
-      });
-    } else if (!called) {
+            : 'കോൾ ആരംഭിച്ചു, പക്ഷേ അടിയന്തര സംഭവം രേഖപ്പെടുത്താനായില്ല.',
+      );
+    } else {
       _emergencyCallWasLaunched = false;
       if (liveLocationStarted) await _stopLiveEmergencyLocation();
-      await _respondAndSpeak(
+      _showEmergencyMessage(
         eventRecorded
             ? 'അടിയന്തര സംഭവം രേഖപ്പെടുത്തി, പക്ഷേ കോൾ ആരംഭിക്കാൻ കഴിഞ്ഞില്ല. സമീപത്തുള്ള ഒരാളോട് സഹായം ചോദിക്കുക.'
             : 'അടിയന്തര സംഭവം രേഖപ്പെടുത്താനോ കോൾ ആരംഭിക്കാനോ കഴിഞ്ഞില്ല. സമീപത്തുള്ള ഒരാളോട് സഹായം ചോദിക്കുക.',
@@ -2134,7 +1470,13 @@ class _ElderDashboardState extends State<ElderDashboard>
         ).showSnackBar(SnackBar(content: Text(emergencySmsStatus)));
       }
     }
-    if (!called) await _restartVoiceLoop();
+  }
+
+  void _showEmergencyMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _saveEmergencyLocationUpdate(
@@ -2199,94 +1541,25 @@ class _ElderDashboardState extends State<ElderDashboard>
     }
   }
 
-  /// Nothing matched a screen or an emergency — treat it as a normal
-  /// question for Gemini, same as before.
-  Future<void> _handleChatIntent(String text) async {
-    if (mounted) {
-      setState(() {
-        _assistantResponse = "ഒരു നിമിഷം...";
-      });
-    }
-
-    final response = await _geminiService.askGemini(text);
-
-    debugPrint("Gemini response: $response");
-
-    if (!mounted) return;
-
-    setState(() {
-      _assistantResponse = response;
-    });
-
-    await _voice.speak(response);
-  }
-
-  // ================================================================
-  // VOICE BUTTON
-  // ================================================================
-
-  Future<void> _toggleVoiceAssistant() async {
-    if (!_voiceAssistantEnabled) return;
-    final wasListening = _voice.isListening;
-    if (wasListening) {
-      _suppressVoiceAutoRestart = true;
-      try {
-        await _voice.cancelListening();
-      } finally {
-        _suppressVoiceAutoRestart = false;
-      }
-    }
-
-    if (_conversationActive) {
-      _conversationActive = false;
-      _awaitingWakeCommand = false;
-      _wakeCommandInProgress = false;
-      _returnToWakeAfterCommand = false;
-      await _voice.stopSpeaking();
-      await _restartVoiceLoop();
-      return;
-    }
-
-    _conversationActive = true;
-    _awaitingWakeCommand = false;
-    await _startListening(forCommand: true);
-  }
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _voicePausedForLifecycle = false;
       if (_emergencyCallWasLaunched) {
         _emergencyCallWasLaunched = false;
         if (_activeEmergencyId != null) {
           unawaited(_stopLiveEmergencyLocation());
         }
       }
-      if (defaultTargetPlatform == TargetPlatform.android &&
-          _voiceAssistantEnabled) {
-        unawaited(_restoreBackgroundWakeService());
-      } else {
-        unawaited(_restartVoiceLoop());
-      }
-      return;
-    }
-
-    if (state == AppLifecycleState.paused ||
+      _voiceSuspended = false;
+      if (_voiceEnabled) _scheduleVoiceRestart();
+    } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
-      _voicePausedForLifecycle = true;
-      _conversationActive = false;
+      _voiceSuspended = true;
       _awaitingWakeCommand = false;
-      _wakeCommandInProgress = false;
-      _returnToWakeAfterCommand = false;
-      unawaited(_releaseForegroundVoiceAndResumeWake());
-    }
-  }
-
-  Future<void> _releaseForegroundVoiceAndResumeWake() async {
-    await _voice.cancelListening();
-    await _voice.stopSpeaking();
-    if (!_emergencyCallWasLaunched && _voiceAssistantEnabled) {
-      await _resumeBackgroundWakeService();
+      _awaitingMedicineName = false;
+      _voiceRestartTimer?.cancel();
+      if (!_voice.isAndroid) unawaited(_voice.stopListening());
+      unawaited(_voice.stopSpeaking());
     }
   }
 
@@ -2296,16 +1569,10 @@ class _ElderDashboardState extends State<ElderDashboard>
 
   @override
   void dispose() {
-    // State.dispose() is synchronous; VoiceService.dispose() is not
-    // awaited here on purpose — the screen is going away regardless,
-    // this just lets the engines wind down cleanly.
     WidgetsBinding.instance.removeObserver(this);
     _careReminderSubscription?.cancel();
-    _voice.dispose();
-    unawaited(_sherpaWakeWordListener.dispose());
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      unawaited(BackgroundVoiceBridge.stopForegroundService());
-    }
+    _voiceRestartTimer?.cancel();
+    unawaited(_voice.dispose());
     super.dispose();
   }
 
@@ -2315,20 +1582,6 @@ class _ElderDashboardState extends State<ElderDashboard>
 
   @override
   Widget build(BuildContext context) {
-    final bool isListening = _voiceState == VoiceState.listening;
-    final bool isCapturingCommand = _awaitingWakeCommand;
-    final assistantStatusText = switch (_assistantLifecycleState) {
-      AssistantLifecycleState.disabled => 'Voice assistant is off.',
-      AssistantLifecycleState.initializing => 'Starting voice assistant...',
-      AssistantLifecycleState.waitingForWakeWord =>
-        'Waiting for "$_assistantName"...',
-      AssistantLifecycleState.capturingCommand =>
-        'Listening for your request...',
-      AssistantLifecycleState.processingCommand => 'Preparing your response...',
-      AssistantLifecycleState.speakingResponse => 'Speaking...',
-      AssistantLifecycleState.error => _assistantResponse,
-    };
-
     return Scaffold(
       backgroundColor: const Color(0xFFF7FAFF),
 
@@ -2375,242 +1628,8 @@ class _ElderDashboardState extends State<ElderDashboard>
             children: [
               _buildPublicElderIdCard(),
               const SizedBox(height: 18),
-              // ======================================================
-              // VOICE ASSISTANT CARD
-              // ======================================================
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(22),
-
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF4F8EF7), Color(0xFF6FA8FF)],
-
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-
-                  borderRadius: BorderRadius.circular(28),
-
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.blue.withValues(alpha: 0.20),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-
-                child: Column(
-                  children: [
-                    // Header
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.record_voice_over_rounded,
-                          color: Colors.white,
-                          size: 30,
-                        ),
-
-                        SizedBox(width: 12),
-
-                        const Expanded(
-                          child: Text(
-                            'How can I help you?',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 21,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: 'Change assistant name',
-                          onPressed: _changeAssistantName,
-                          color: Colors.white,
-                          icon: const Icon(Icons.settings_voice_rounded),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    Align(
-                      alignment: Alignment.centerLeft,
-
-                      child: Text(
-                        isListening
-                            ? (_conversationActive && !_awaitingWakeCommand
-                                  ? 'Listening for your request...'
-                                  : 'Listening for "$_assistantName"...')
-                            : assistantStatusText,
-
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text(
-                        'Hands-free assistant',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      subtitle: Text(
-                        _voiceAssistantEnabled
-                            ? 'Waiting for "$_assistantName"'
-                            : 'Wake-word monitoring is off',
-                        style: const TextStyle(color: Colors.white70),
-                      ),
-                      value: _voiceAssistantEnabled,
-                      activeThumbColor: Colors.white,
-                      activeTrackColor: Colors.lightBlueAccent,
-                      inactiveThumbColor: Colors.white70,
-                      inactiveTrackColor: Colors.white24,
-                      onChanged: _setVoiceAssistantEnabled,
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    // Recognized speech
-                    if (_recognizedText.isNotEmpty)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(14),
-
-                        margin: const EdgeInsets.only(bottom: 14),
-
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-
-                        child: Text(
-                          '"$_recognizedText"',
-
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 15,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ),
-
-                    // Assistant response
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-
-                      margin: const EdgeInsets.only(bottom: 18),
-
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(15),
-                      ),
-
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-
-                        children: [
-                          const Icon(
-                            Icons.smart_toy_rounded,
-                            color: Colors.white,
-                            size: 22,
-                          ),
-
-                          const SizedBox(width: 10),
-
-                          Expanded(
-                            child: Text(
-                              _assistantResponse,
-
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                height: 1.4,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // Microphone
-                    GestureDetector(
-                      onTap: _voiceAssistantEnabled
-                          ? _toggleVoiceAssistant
-                          : null,
-
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-
-                        width: isListening && isCapturingCommand ? 96 : 82,
-                        height: isListening && isCapturingCommand ? 96 : 82,
-
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-
-                          boxShadow: [
-                            BoxShadow(
-                              color: isListening && isCapturingCommand
-                                  ? Colors.white.withValues(alpha: 0.45)
-                                  : Colors.black.withValues(alpha: 0.12),
-
-                              blurRadius: isListening && isCapturingCommand
-                                  ? 25
-                                  : 15,
-
-                              spreadRadius: isListening && isCapturingCommand
-                                  ? 5
-                                  : 0,
-                            ),
-                          ],
-                        ),
-
-                        child: Icon(
-                          isListening && isCapturingCommand
-                              ? Icons.stop_rounded
-                              : Icons.mic_rounded,
-
-                          color: _voiceAssistantEnabled
-                              ? const Color(0xFF4F8EF7)
-                              : Colors.grey,
-
-                          size: isListening && isCapturingCommand ? 46 : 42,
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 12),
-
-                    Text(
-                      isListening
-                          ? (_conversationActive && !_awaitingWakeCommand
-                                ? 'Listening for your request...'
-                                : 'Waiting for "$_assistantName"...')
-                          : assistantStatusText,
-
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 26),
-
-              // ======================================================
-              const SizedBox(height: 26),
-
+              _buildVoiceInteractionCard(),
+              const SizedBox(height: 18),
               // ======================================================
               // QUICK ACTIONS
               // ======================================================
@@ -2787,26 +1806,10 @@ class _ElderDashboardState extends State<ElderDashboard>
           };
           if (page == null) return;
           final navigator = Navigator.of(context);
-          if (index == 5) {
-            _conversationActive = false;
-            _awaitingWakeCommand = false;
-            if (_voice.isListening) {
-              _suppressVoiceAutoRestart = true;
-              try {
-                await _voice.cancelListening();
-              } finally {
-                _suppressVoiceAutoRestart = false;
-              }
-            }
-          }
           if (!mounted) return;
           await navigator.push(MaterialPageRoute(builder: (context) => page));
           if (mounted) {
             setState(() => selectedIndex = 0);
-            if (index == 5) {
-              await _loadAssistantName();
-              await _startBackgroundWakeService();
-            }
           }
         },
 

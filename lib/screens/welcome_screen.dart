@@ -31,7 +31,7 @@ class WelcomeScreen extends StatelessWidget {
               const SizedBox(height: 15),
 
               const Text(
-                "Your Malayalam Voice Assistant\nfor Elderly Care",
+                "Stay connected with the care and support you need",
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 18, color: Colors.black54),
               ),

@@ -1,17 +1,13 @@
 package com.example.carebridge
 
 import android.Manifest
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.os.PowerManager
 import android.telephony.SmsManager
-import android.view.WindowManager
 import androidx.core.app.ActivityCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -22,31 +18,14 @@ class MainActivity : FlutterActivity() {
     private val systemChannelName = "carebridge/system"
     private val voiceChannelName = "carebridge/voice_background"
     private val emergencyLocationChannelName = "carebridge/emergency_location"
+    private val reminderAnnouncementChannelName = "carebridge/reminder_announcements"
     private val callPermissionRequestCode = 9101
     private var pendingPhoneNumber: String? = null
     private var pendingResult: MethodChannel.Result? = null
 
     companion object {
-        private var voiceMethodChannel: MethodChannel? = null
         private var emergencyLocationMethodChannel: MethodChannel? = null
-        private var pendingWakePhrase: String? = null
-        private var wakeListenerReady = false
-
-        fun notifyWakeWordDetected(phrase: String) {
-            Handler(Looper.getMainLooper()).post {
-                if (wakeListenerReady && voiceMethodChannel != null) {
-                    voiceMethodChannel?.invokeMethod("onWakeWordDetected", mapOf("wakePhrase" to phrase))
-                } else {
-                    pendingWakePhrase = phrase
-                }
-            }
-        }
-
-        fun notifyWakeServiceError(message: String) {
-            Handler(Looper.getMainLooper()).post {
-                voiceMethodChannel?.invokeMethod("onWakeServiceError", message)
-            }
-        }
+        private var voiceMethodChannel: MethodChannel? = null
 
         fun notifyEmergencyLocation(
             elderId: String,
@@ -75,27 +54,20 @@ class MainActivity : FlutterActivity() {
                 )
             }
         }
-    }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        wakeUpScreen()
-        handleWakeIntent(intent)
-    }
+        fun notifyVoiceTranscript(transcript: String) {
+            Handler(Looper.getMainLooper()).post {
+                voiceMethodChannel?.invokeMethod("onVoiceTranscript", transcript)
+            }
+        }
 
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        wakeUpScreen()
-        handleWakeIntent(intent)
-    }
-
-    private fun handleWakeIntent(intent: Intent?) {
-        if (intent == null) return
-        val triggered = intent.getBooleanExtra("wake_word_triggered", false)
-        val phrase = intent.getStringExtra("wake_phrase") ?: "Care"
-        if (triggered) {
-            notifyWakeWordDetected(phrase)
+        fun notifyVoiceServiceError(message: String, permanent: Boolean = false) {
+            Handler(Looper.getMainLooper()).post {
+                voiceMethodChannel?.invokeMethod(
+                    "onVoiceServiceError",
+                    mapOf("message" to message, "permanent" to permanent)
+                )
+            }
         }
     }
 
@@ -205,78 +177,43 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-        val voiceChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, voiceChannelName)
+        val voiceChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            voiceChannelName
+        )
         voiceMethodChannel = voiceChannel
-        wakeListenerReady = false
         voiceChannel.setMethodCallHandler { call, result ->
             when (call.method) {
-                "registerWakeWordListener" -> {
-                    wakeListenerReady = true
-                    pendingWakePhrase?.let { phrase ->
-                        pendingWakePhrase = null
-                        voiceMethodChannel?.invokeMethod(
-                            "onWakeWordDetected",
-                            mapOf("wakePhrase" to phrase)
-                        )
-                    }
-                    result.success(true)
-                }
-                "startForegroundVoice" -> {
+                "startVoiceListening" -> {
                     try {
-                        val wakePhrase = call.argument<String>("wakePhrase")?.trim()
-                        if (wakePhrase.isNullOrEmpty()) {
-                            result.error(
-                                "INVALID_WAKE_PHRASE",
-                                "A wake name is required.",
-                                null
-                            )
-                            return@setMethodCallHandler
-                        }
-                        CareVoiceService.start(this, wakePhrase)
+                        CareVoiceService.start(this)
                         result.success(true)
-                    } catch (e: Exception) {
-                        result.error("SERVICE_START_FAILED", e.message, null)
+                    } catch (error: Exception) {
+                        result.error("VOICE_SERVICE_START_FAILED", error.message, null)
                     }
                 }
-                "stopForegroundVoice" -> {
+                "stopVoiceListening" -> {
                     try {
                         CareVoiceService.stop(this)
                         result.success(true)
-                    } catch (e: Exception) {
-                        result.error("SERVICE_STOP_FAILED", e.message, null)
+                    } catch (error: Exception) {
+                        result.error("VOICE_SERVICE_STOP_FAILED", error.message, null)
                     }
                 }
-                "pauseForegroundVoice" -> {
+                "pauseVoiceListening" -> {
                     try {
-                        if (CareVoiceService.pause()) {
-                            result.success(true)
-                        } else {
-                            result.error("VOICE_SERVICE_NOT_RUNNING", "Wake listening is not active.", null)
-                        }
-                    } catch (e: Exception) {
-                        result.error("PAUSE_FAILED", e.message, null)
-                    }
-                }
-                "resumeForegroundVoice" -> {
-                    try {
-                        if (CareVoiceService.resume()) {
-                            result.success(true)
-                        } else {
-                            result.error("VOICE_SERVICE_NOT_RUNNING", "Wake listening could not resume.", null)
-                        }
-                    } catch (e: Exception) {
-                        result.error("RESUME_FAILED", e.message, null)
-                    }
-                }
-                "getForegroundVoiceState" -> {
-                    result.success(CareVoiceService.currentState())
-                }
-                "wakeScreen" -> {
-                    try {
-                        wakeUpScreen()
+                        CareVoiceService.pause(this)
                         result.success(true)
-                    } catch (e: Exception) {
-                        result.error("WAKE_FAILED", e.message, null)
+                    } catch (error: Exception) {
+                        result.error("VOICE_SERVICE_PAUSE_FAILED", error.message, null)
+                    }
+                }
+                "resumeVoiceListening" -> {
+                    try {
+                        CareVoiceService.resume(this)
+                        result.success(true)
+                    } catch (error: Exception) {
+                        result.error("VOICE_SERVICE_RESUME_FAILED", error.message, null)
                     }
                 }
                 else -> result.notImplemented()
@@ -320,34 +257,53 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-    }
-
-    private fun wakeUpScreen() {
-        runOnUiThread {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                setShowWhenLocked(true)
-                setTurnScreenOn(true)
-            } else {
-                @Suppress("DEPRECATION")
-                window.addFlags(
-                    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                    WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
-                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            reminderAnnouncementChannelName
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getRecentReminder" -> result.success(
+                    ReminderAlarmReceiver.getRecentReminder(this)
                 )
-            }
-            try {
-                val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-                @Suppress("DEPRECATION")
-                val screenWakeLock = powerManager.newWakeLock(
-                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
-                    "CareBridge::ScreenWakeLock"
-                )
-                screenWakeLock.acquire(5000L)
-            } catch (e: Exception) {
-                // Ignore wake lock exceptions if system restrictions apply
+                "clearRecentReminder" -> {
+                    val id = call.argument<Int>("id")
+                    if (id == null) {
+                        result.error(
+                            "INVALID_REMINDER_ID",
+                            "A reminder ID is required.",
+                            null
+                        )
+                    } else {
+                        result.success(
+                            ReminderAlarmReceiver.clearRecentReminder(this, id)
+                        )
+                    }
+                }
+                "syncReminderAlarms" -> {
+                    val reminders = call.argument<List<Map<String, Any?>>>("reminders")
+                    if (reminders == null) {
+                        result.error(
+                            "INVALID_REMINDER_SCHEDULE",
+                            "A reminder schedule is required.",
+                            null
+                        )
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        ReminderAlarmReceiver.replace(this, reminders)
+                        result.success(true)
+                    } catch (error: Exception) {
+                        result.error(
+                            "REMINDER_ALARM_SYNC_FAILED",
+                            error.message ?: "Could not update spoken reminder alarms.",
+                            null
+                        )
+                    }
+                }
+                else -> result.notImplemented()
             }
         }
+
     }
 
     private fun placeDirectCall(phoneNumber: String, result: MethodChannel.Result) {
@@ -387,8 +343,4 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    override fun onDestroy() {
-        voiceMethodChannel = null
-        super.onDestroy()
-    }
 }

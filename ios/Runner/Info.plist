@@ -26,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>CareBridge uses the microphone for English voice interaction while the app is open.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>CareBridge uses speech recognition to record care check-ins and respond to emergency phrases while the app is open.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

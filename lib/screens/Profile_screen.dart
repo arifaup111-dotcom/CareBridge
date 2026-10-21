@@ -1,11 +1,9 @@
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'family_connection_screen.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import '../services/auth_service.dart';
-import '../services/background_voice_bridge.dart';
 import '../services/firestore_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'welcome_screen.dart';
@@ -26,7 +24,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String age = "Not added";
   String phone = "Not added";
   String email = "Not added";
-  String assistantName = "Care";
   String elderId = "Loading...";
 
   final FirestoreService _db = FirestoreService();
@@ -49,7 +46,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         age = (profile?['age'] ?? 'Not added').toString();
         phone = (profile?['phone'] ?? 'Not added').toString();
         email = (profile?['email'] ?? 'Not added').toString();
-        assistantName = (profile?['assistantName'] ?? 'Care').toString();
         elderId = id ?? 'Not available';
       });
     } catch (_) {
@@ -131,8 +127,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final emailController = TextEditingController(
       text: email == 'Not added' ? '' : email,
     );
-    final assistantController = TextEditingController(text: assistantName);
-
     showDialog(
       context: context,
       builder: (context) {
@@ -186,15 +180,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     prefixIcon: Icon(Icons.email_outlined),
                   ),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: assistantController,
-                  maxLength: 30,
-                  decoration: const InputDecoration(
-                    labelText: "Name to call the app",
-                    prefixIcon: Icon(Icons.record_voice_over_outlined),
-                  ),
-                ),
               ],
             ),
           ),
@@ -212,7 +197,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 final ageText = ageController.text.trim();
                 final requestedPhone = phoneController.text.trim();
                 final requestedEmail = emailController.text.trim();
-                final requestedAssistantName = assistantController.text.trim();
                 final parsedAge = ageText.isEmpty
                     ? null
                     : int.tryParse(ageText);
@@ -266,16 +250,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   );
                   return;
                 }
-                if (requestedAssistantName.isEmpty ||
-                    requestedAssistantName.length > 30) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Enter an app name up to 30 characters.'),
-                    ),
-                  );
-                  return;
-                }
-
                 Navigator.pop(context);
                 try {
                   final phoneChangeRequested =
@@ -283,8 +257,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   final emailChangeRequested =
                       requestedEmail.isNotEmpty &&
                       requestedEmail.toLowerCase() != email.toLowerCase();
-                  final assistantNameChanged =
-                      requestedAssistantName != assistantName;
                   await _db.updateCurrentUserDetails(
                     name: updatedName,
                     age: ageText.isEmpty ? null : ageText,
@@ -295,29 +267,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       email: emailChangeRequested ? requestedEmail : null,
                     );
                   }
-                  if (assistantNameChanged) {
-                    await _db.updateAssistantName(requestedAssistantName);
-                  }
-                  var wakeListenerUpdated = true;
-                  if (assistantNameChanged &&
-                      defaultTargetPlatform == TargetPlatform.android) {
-                    wakeListenerUpdated =
-                        await BackgroundVoiceBridge.startForegroundService(
-                          wakePhrase: requestedAssistantName,
-                        );
-                  }
                   if (!mounted) return;
                   setState(() {
                     name = updatedName;
                     age = ageText.isEmpty ? 'Not added' : ageText;
-                    assistantName = requestedAssistantName;
                   });
                   ScaffoldMessenger.of(this.context).showSnackBar(
                     SnackBar(
                       content: Text(
-                        !wakeListenerUpdated
-                            ? 'Profile saved, but the wake name could not be applied. Reopen the Elder dashboard to retry.'
-                            : phoneChangeRequested || emailChangeRequested
+                        phoneChangeRequested || emailChangeRequested
                             ? 'Profile updated. Contact change submitted for admin approval.'
                             : 'Profile updated.',
                       ),
@@ -372,9 +330,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (confirmed != true) return;
 
     try {
-      if (defaultTargetPlatform == TargetPlatform.android) {
-        await BackgroundVoiceBridge.stopForegroundService();
-      }
       await AuthService().signOut();
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
@@ -619,11 +574,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   _detailRow(Icons.phone_outlined, "Phone", phone),
                   _detailRow(Icons.email_outlined, "Email", email),
-                  _detailRow(
-                    Icons.record_voice_over_outlined,
-                    "App wake name",
-                    assistantName,
-                  ),
                   _phoneChangeStatus(),
                 ],
               ),

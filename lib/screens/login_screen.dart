@@ -2,7 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/auth_service.dart';
 import 'admin_dashboard.dart';
@@ -13,8 +12,13 @@ import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final String? selectedRole;
+  final bool initialUsePhoneOtp;
 
-  const LoginScreen({super.key, this.selectedRole});
+  const LoginScreen({
+    super.key,
+    this.selectedRole,
+    this.initialUsePhoneOtp = false,
+  });
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -29,11 +33,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _obscurePassword = true;
   bool _isLoading = false;
-  bool _usePhoneOtp = false;
+  late bool _usePhoneOtp = widget.initialUsePhoneOtp;
   bool _rememberLogin = true;
   String? _verificationId;
   ConfirmationResult? _confirmationResult;
   String? _phoneAuthError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRememberLogin();
+  }
 
   @override
   void dispose() {
@@ -42,6 +52,11 @@ class _LoginScreenState extends State<LoginScreen> {
     _phoneController.dispose();
     _otpController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadRememberLogin() async {
+    final rememberLogin = await AuthService().shouldRememberLogin();
+    if (mounted) setState(() => _rememberLogin = rememberLogin);
   }
 
   Future<void> _login() async {
@@ -201,8 +216,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _saveRememberLogin() async {
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setBool(AuthService.rememberLoginKey, _rememberLogin);
+    await AuthService().setRememberLogin(_rememberLogin);
   }
 
   Future<void> _openDashboard(User user) async {
@@ -231,6 +245,17 @@ class _LoginScreenState extends State<LoginScreen> {
         _showMessage(
           'Your account role is missing or unsupported. Please contact support.',
         );
+      }
+      return;
+    }
+
+    final expectedRole = widget.selectedRole?.trim().toLowerCase();
+    if (expectedRole != null &&
+        expectedRole.isNotEmpty &&
+        role != (expectedRole == 'caregiver' ? 'family' : expectedRole)) {
+      await AuthService().signOut();
+      if (mounted) {
+        _showMessage('This account is not a ${widget.selectedRole} account.');
       }
       return;
     }
@@ -587,7 +612,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     const Padding(
                       padding: EdgeInsets.only(top: 8),
                       child: Text(
-                        'Enter a 10-digit Indian number or an international number with country code.',
+                        'Enter a 10-digit Indian number or an international number with country code. The number must be linked to this account in Firebase Authentication.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: Colors.black54, fontSize: 13),
                       ),

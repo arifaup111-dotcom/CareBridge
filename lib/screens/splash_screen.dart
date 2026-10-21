@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/auth_service.dart';
 import 'admin_dashboard.dart';
@@ -26,10 +25,9 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _openLogin() async {
     await Future<void>.delayed(const Duration(seconds: 2));
     if (!mounted) return;
-    final preferences = await SharedPreferences.getInstance();
-    final user = FirebaseAuth.instance.currentUser;
-    final rememberLogin = preferences.getBool(AuthService.rememberLoginKey);
-    if (rememberLogin == true && user != null) {
+    final user = await FirebaseAuth.instance.authStateChanges().first;
+    final rememberLogin = await AuthService().shouldRememberLogin();
+    if (rememberLogin && user != null) {
       try {
         final profile = await FirebaseFirestore.instance
             .collection('users')
@@ -56,7 +54,7 @@ class _SplashScreenState extends State<SplashScreen> {
       } catch (error) {
         debugPrint('Could not restore remembered CareBridge login: $error');
       }
-    } else if (rememberLogin == false && user != null) {
+    } else if (!rememberLogin && user != null) {
       await AuthService().signOut();
     }
     if (!mounted) return;
@@ -90,7 +88,7 @@ class _SplashScreenState extends State<SplashScreen> {
             SizedBox(height: 10),
 
             Text(
-              "Your Malayalam Voice Assistant",
+              "Care and support for your family",
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 18, color: Colors.black54),
             ),

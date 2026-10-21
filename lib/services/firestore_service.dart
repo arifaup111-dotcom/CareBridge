@@ -7,8 +7,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 ///   users/{uid}                          -> profile + role + linkedElderId
 ///   elders/{elderId}/medicines/{id}      -> name, dosage, time, instruction
 ///   elders/{elderId}/appointments/{id}   -> doctor, place, date, time
-///   elders/{elderId}/settings/emergency  -> contactName, contactNumber, phrases
-///   elders/{elderId}/emergencies/{id}    -> lat, lng, phrase, timestamp
+///   elders/{elderId}/settings/emergency  -> contactName, contactNumber
+///   elders/{elderId}/emergencies/{id}    -> lat, lng, trigger, timestamp
 ///
 /// Everything is keyed by "elderId" so the Family dashboard and the Elder
 /// dashboard read and write the exact same documents.
@@ -55,7 +55,6 @@ class FirestoreService {
     String? linkedElderId,
     String? elderId,
     String? phone,
-    String? assistantName,
   }) async {
     final normalizedRole = role.toLowerCase();
     final normalizedElderId = elderId?.trim().toUpperCase();
@@ -68,8 +67,6 @@ class FirestoreService {
       'elderId': normalizedElderId,
       'phone': phone,
       'createdAt': FieldValue.serverTimestamp(),
-      if (assistantName != null && assistantName.trim().isNotEmpty)
-        'assistantName': assistantName.trim(),
     }, SetOptions(merge: true));
     final signInEmail = _auth.currentUser?.email?.trim();
     if (signInEmail != null && signInEmail.isNotEmpty) {
@@ -188,24 +185,6 @@ class FirestoreService {
   Future<Map<String, dynamic>?> getUserProfile(String uid) async {
     final doc = await firestore.collection('users').doc(uid).get();
     return doc.data();
-  }
-
-  Future<void> updateAssistantName(String assistantName) async {
-    final uid = currentUid;
-    final normalizedName = assistantName.trim();
-    if (uid == null) throw StateError('No signed-in user.');
-    if (normalizedName.isEmpty || normalizedName.length > 30) {
-      throw ArgumentError.value(
-        assistantName,
-        'assistantName',
-        'The assistant name must be between 1 and 30 characters.',
-      );
-    }
-
-    await firestore.collection('users').doc(uid).update({
-      'assistantName': normalizedName,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
   }
 
   Future<void> updateCurrentUserDetails({
@@ -482,8 +461,7 @@ class FirestoreService {
         '${today.day.toString().padLeft(2, '0')}';
   }
 
-  /// One-shot read used by the voice assistant when the elder asks
-  /// "ഇന്നത്തെ മരുന്ന് എന്താണ്?" (what is today's medicine).
+  /// One-shot read used to schedule reminders for the elder's medicines.
   Future<List<Map<String, dynamic>>> getMedicinesOnce(String elderId) async {
     final snap = await _medicines(elderId).orderBy('time').get();
     return snap.docs
@@ -575,14 +553,14 @@ class FirestoreService {
     required String elderId,
     required List<String> mealTimes,
     required List<String> waterTimes,
-    String wakeUpTime = '7:00 AM',
-    String exerciseTime = '8:00 AM',
+    String? wakeUpTime,
+    String? exerciseTime,
   }) {
     return _careReminderSettings(elderId).set({
       'mealTimes': mealTimes,
       'waterTimes': waterTimes,
-      'wakeUpTime': wakeUpTime,
-      'exerciseTime': exerciseTime,
+      'wakeUpTime': wakeUpTime ?? FieldValue.delete(),
+      'exerciseTime': exerciseTime ?? FieldValue.delete(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
@@ -591,7 +569,14 @@ class FirestoreService {
     required String elderId,
     required String category,
   }) {
-    if (category != 'meal' && category != 'water') {
+    if (!const {
+      'meal',
+      'breakfast',
+      'lunch',
+      'dinner',
+      'water',
+      'exercise',
+    }.contains(category)) {
       throw ArgumentError.value(category, 'category');
     }
     final today = DateTime.now();
@@ -599,10 +584,17 @@ class FirestoreService {
         '${today.year.toString().padLeft(4, '0')}-'
         '${today.month.toString().padLeft(2, '0')}-'
         '${today.day.toString().padLeft(2, '0')}';
-    return _careReminderSettings(elderId).set({
+    final updates = <String, dynamic>{
       '${category}ConfirmedOn': date,
       '${category}ConfirmedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    };
+    if (category == 'breakfast' ||
+        category == 'lunch' ||
+        category == 'dinner') {
+      updates['mealConfirmedOn'] = date;
+      updates['mealConfirmedAt'] = FieldValue.serverTimestamp();
+    }
+    return _careReminderSettings(elderId).set(updates, SetOptions(merge: true));
   }
 
   // ================================================================
@@ -639,13 +631,16 @@ class FirestoreService {
     }, SetOptions(merge: true));
   }
 
-  /// Malayalam trigger phrases the elder can say to raise an alert.
-  Future<void> saveEmergencyPhrases({
+  Future<void> saveEmergencyPhrase({
     required String elderId,
-    required List<String> phrases,
+    required String phrase,
   }) {
+    final normalizedPhrase = phrase.trim();
+    if (normalizedPhrase.isEmpty) {
+      throw ArgumentError.value(phrase, 'phrase', 'Emergency phrase is empty.');
+    }
     return _emergencySettings(elderId).set({
-      'phrases': phrases,
+      'emergencyPhrase': normalizedPhrase,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }

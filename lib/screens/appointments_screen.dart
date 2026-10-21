@@ -2,7 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../services/firestore_service.dart';
-import '../services/speech_output_service.dart';
 
 class AppointmentsScreen extends StatefulWidget {
   final bool readOnly;
@@ -15,28 +14,8 @@ class AppointmentsScreen extends StatefulWidget {
 
 class _AppointmentsScreenState extends State<AppointmentsScreen> {
   final FirestoreService _db = FirestoreService();
-  final SpeechOutputService _speechOutput = SpeechOutputService();
   String? _elderId;
   bool _loading = true;
-
-  Future<void> _speakAppointment(Map<String, dynamic> data) async {
-    final speech = [
-      'അപ്പോയിന്റ്മെന്റ്.',
-      (data['doctor'] ?? 'ഡോക്ടർ').toString(),
-      (data['specialization'] ?? '').toString(),
-      (data['date'] ?? '').toString(),
-      (data['time'] ?? '').toString(),
-      (data['hospital'] ?? '').toString(),
-    ].where((part) => part.isNotEmpty).join('. ');
-    try {
-      await _speechOutput.speak(speech);
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
-    }
-  }
 
   @override
   void initState() {
@@ -163,13 +142,6 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                   ),
                 ),
               ),
-              if (widget.readOnly)
-                IconButton(
-                  tooltip: 'Hear appointment details',
-                  onPressed: () => _speakAppointment(data),
-                  icon: const Icon(Icons.volume_up_rounded),
-                  color: const Color(0xFF4F8EF7),
-                ),
               if (!widget.readOnly)
                 PopupMenuButton<String>(
                   onSelected: (value) {
@@ -243,6 +215,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
     );
     if (yes == true) {
       await _db.deleteAppointment(elderId: _elderId!, appointmentId: id);
+      await _db.touchCareSync(_elderId!);
     }
   }
 
@@ -374,6 +347,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                         data: data,
                       );
                     }
+                    await _db.touchCareSync(_elderId!);
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF4F8EF7),

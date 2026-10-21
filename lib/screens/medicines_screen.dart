@@ -2,7 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../services/firestore_service.dart';
-import '../services/speech_output_service.dart';
 
 class MedicinesScreen extends StatefulWidget {
   /// When true, this screen only displays the care plan.
@@ -16,28 +15,9 @@ class MedicinesScreen extends StatefulWidget {
 
 class _MedicinesScreenState extends State<MedicinesScreen> {
   final FirestoreService _db = FirestoreService();
-  final SpeechOutputService _speechOutput = SpeechOutputService();
 
   String? _elderId;
   bool _loading = true;
-
-  Future<void> _speakMedicine({
-    required String name,
-    required String dosage,
-    required String time,
-    required String instruction,
-  }) async {
-    try {
-      await _speechOutput.speak(
-        'മരുന്ന്: $name. അളവ്: $dosage. സമയം: $time. $instruction.',
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
-    }
-  }
 
   Future<void> _toggleMedicineTaken(String medicineId, bool taken) async {
     if (_elderId == null) return;
@@ -47,11 +27,6 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
         medicineId: medicineId,
         taken: taken,
       );
-      if (taken) {
-        _speechOutput
-            .speak('മരുന്ന് കഴിച്ചതായി അടയാളപ്പെടുത്തി.')
-            .catchError((_) {});
-      }
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -268,18 +243,6 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                         ),
                       ),
                     ),
-                    IconButton(
-                      tooltip: 'Hear medicine details',
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () => _speakMedicine(
-                        name: medicineName,
-                        dosage: dosage,
-                        time: time,
-                        instruction: instruction,
-                      ),
-                      icon: const Icon(Icons.volume_up_rounded),
-                      color: const Color(0xFF4F8EF7),
-                    ),
                   ],
                 ),
 
@@ -422,6 +385,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                 elderId: _elderId!,
                 medicineId: medicineId,
               );
+              await _db.touchCareSync(_elderId!);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.redAccent,
@@ -537,6 +501,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                       dosage: dosage,
                       time: formattedTime,
                     );
+                    await _db.touchCareSync(_elderId!);
 
                     if (!mounted) return;
 
@@ -659,6 +624,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                         'time': selectedTime.format(context),
                       },
                     );
+                    await _db.touchCareSync(_elderId!);
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF4F8EF7),

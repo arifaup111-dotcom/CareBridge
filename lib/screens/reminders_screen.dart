@@ -1,11 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../services/care_alarm_service.dart';
 import '../services/firestore_service.dart';
-import '../services/speech_output_service.dart';
+import '../services/permission_service.dart';
 
 class RemindersScreen extends StatefulWidget {
   const RemindersScreen({super.key});
@@ -16,10 +17,11 @@ class RemindersScreen extends StatefulWidget {
 
 class _RemindersScreenState extends State<RemindersScreen> {
   final FirestoreService _db = FirestoreService();
-  final SpeechOutputService _speechOutput = SpeechOutputService();
   String? _elderId;
   bool _loading = true;
   bool _loadFailed = false;
+  String? _lastAlarmSyncKey;
+  String? _alarmSyncInProgress;
 
   @override
   void initState() {
@@ -52,11 +54,6 @@ class _RemindersScreenState extends State<RemindersScreen> {
         medicineId: medicineId,
         taken: taken,
       );
-      if (taken) {
-        _speechOutput
-            .speak('മരുന്ന് കഴിച്ചതായി അടയാളപ്പെടുത്തി.')
-            .catchError((_) {});
-      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -177,26 +174,85 @@ class _RemindersScreenState extends State<RemindersScreen> {
     List<QueryDocumentSnapshot<Map<String, dynamic>>> appointments,
     Map<String, dynamic> careReminders,
   ) async {
+    final medicineList = medicines
+        .map((doc) => {'id': doc.id, ...doc.data()})
+        .toList();
+    final appointmentList = appointments
+        .map((doc) => {'id': doc.id, ...doc.data()})
+        .toList();
+    final mealTimes = _stringList(careReminders['mealTimes']);
+    final waterTimes = _stringList(careReminders['waterTimes']);
+    final wakeUpTime = careReminders['wakeUpTime']?.toString();
+    final exerciseTime = careReminders['exerciseTime']?.toString();
+    final signature = jsonEncode({
+      'mealTimes': mealTimes,
+      'waterTimes': waterTimes,
+      'wakeUpTime': wakeUpTime,
+      'exerciseTime': exerciseTime,
+      'medicines': medicineList
+          .map(
+            (medicine) => [
+              medicine['id'],
+              medicine['name'],
+              medicine['time'],
+              medicine['dosage'],
+              medicine['instruction'],
+            ],
+          )
+          .toList(),
+      'appointments': appointmentList
+          .map(
+            (appointment) => [
+              appointment['id'],
+              appointment['doctor'],
+              appointment['specialization'],
+              appointment['hospital'],
+              appointment['date'],
+              appointment['time'],
+              appointment['status'],
+              appointment['cancelled'],
+              appointment['canceled'],
+              appointment['isCancelled'],
+              appointment['deleted'],
+            ],
+          )
+          .toList(),
+    });
+    if (_lastAlarmSyncKey == signature || _alarmSyncInProgress == signature) {
+      return;
+    }
+    _alarmSyncInProgress = signature;
     try {
-      final medList = medicines.map((d) => {'id': d.id, ...d.data()}).toList();
-      await CareAlarmService.instance.scheduleMedicineReminders(
-        medicines: medList,
+      await PermissionService.requestNotifications();
+      final exactAlarmsAllowed = await CareAlarmService.instance
+          .requestExactAlarmPermission();
+      await CareAlarmService.instance.scheduleAllReminders(
+        mealTimes: mealTimes,
+        waterTimes: waterTimes,
+        wakeUpTime: wakeUpTime,
+        exerciseTime: exerciseTime,
+        medicines: medicineList,
+        appointments: appointmentList,
       );
-      await CareAlarmService.instance.scheduleDailyReminders(
-        mealTimes: _stringList(careReminders['mealTimes']),
-        waterTimes: _stringList(careReminders['waterTimes']),
-        wakeUpTime: (careReminders['wakeUpTime'] ?? '7:00 AM').toString(),
-        exerciseTime: (careReminders['exerciseTime'] ?? '8:00 AM').toString(),
-      );
-
-      final apptList = appointments
-          .map((d) => {'id': d.id, ...d.data()})
-          .toList();
-      await CareAlarmService.instance.scheduleAppointmentReminders(
-        appointments: apptList,
-      );
-    } catch (e) {
-      debugPrint('Alarm sync error in reminders screen: $e');
+      _lastAlarmSyncKey = signature;
+      if (!exactAlarmsAllowed && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Exact alarm access is off. Android may deliver reminders late.',
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      debugPrint('Alarm sync error in reminders screen: $error');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not schedule care reminders: $error')),
+        );
+      }
+    } finally {
+      _alarmSyncInProgress = null;
     }
   }
 
@@ -207,9 +263,8 @@ class _RemindersScreenState extends State<RemindersScreen> {
   ) {
     final mealTimes = _stringList(careReminders['mealTimes']);
     final waterTimes = _stringList(careReminders['waterTimes']);
-    final wakeUpTime = (careReminders['wakeUpTime'] ?? '7:00 AM').toString();
-    final exerciseTime = (careReminders['exerciseTime'] ?? '8:00 AM')
-        .toString();
+    final wakeUpTime = careReminders['wakeUpTime']?.toString();
+    final exerciseTime = careReminders['exerciseTime']?.toString();
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
@@ -240,9 +295,6 @@ class _RemindersScreenState extends State<RemindersScreen> {
                     : const Color(0xFF4F8EF7),
                 taken: taken,
                 onToggleTaken: () => _toggleMedicineTaken(document.id, !taken),
-                onSpeak: () => _speakReminder(
-                  'മരുന്ന്: $medName. അളവ്: $dosage. സമയം: $time. $instruction.',
-                ),
               ),
             );
           }),
@@ -266,9 +318,6 @@ class _RemindersScreenState extends State<RemindersScreen> {
                 subtitle: hospital,
                 time: '$date · $time',
                 iconColor: const Color(0xFF7A5AF8),
-                onSpeak: () => _speakReminder(
-                  'അപ്പോയിന്റ്മെന്റ്: $doctor. ആശുപത്രി: $hospital. തീയതി: $date, സമയം: $time.',
-                ),
               ),
             );
           }),
@@ -277,7 +326,6 @@ class _RemindersScreenState extends State<RemindersScreen> {
         _buildTimeReminders(
           times: mealTimes,
           label: 'Meal time',
-          malayalamLabel: 'ഭക്ഷണം കഴിക്കാനുള്ള സമയമായി.',
           icon: Icons.restaurant_rounded,
           color: const Color(0xFFE6A21A),
         ),
@@ -286,27 +334,22 @@ class _RemindersScreenState extends State<RemindersScreen> {
         _buildTimeReminders(
           times: waterTimes,
           label: 'Water time',
-          malayalamLabel: 'വെള്ളം കുടിക്കാനുള്ള സമയമായി. ദാഹം മാറ്റൂ.',
           icon: Icons.water_drop_rounded,
           color: const Color(0xFF0EA5E9),
         ),
         const SizedBox(height: 24),
         _sectionTitle('Morning Wake-up (രാവിലെ എഴുന്നേൽക്കാം)'),
         _buildTimeReminders(
-          times: [wakeUpTime],
+          times: wakeUpTime == null ? [] : [wakeUpTime],
           label: 'Wake-up time',
-          malayalamLabel:
-              'സുപ്രഭാതം. എഴുന്നേൽക്കാനുള്ള സമയമായി. പുതിയ ദിവസം സന്തോഷത്തോടെ ആരംഭിക്കാം.',
           icon: Icons.wb_sunny_rounded,
           color: const Color(0xFFE6A21A),
         ),
         const SizedBox(height: 24),
         _sectionTitle('Exercise (വ്യായാമം)'),
         _buildTimeReminders(
-          times: [exerciseTime],
+          times: exerciseTime == null ? [] : [exerciseTime],
           label: 'Exercise time',
-          malayalamLabel:
-              'വ്യായാമം ചെയ്യാനുള്ള സമയമായി. ആരോഗ്യത്തിന് അനുയോജ്യമായ ലഘുവ്യായാമം ചെയ്യൂ.',
           icon: Icons.fitness_center_rounded,
           color: const Color(0xFF10B981),
         ),
@@ -320,7 +363,6 @@ class _RemindersScreenState extends State<RemindersScreen> {
   Widget _buildTimeReminders({
     required List<String> times,
     required String label,
-    required String malayalamLabel,
     required IconData icon,
     required Color color,
   }) {
@@ -336,25 +378,11 @@ class _RemindersScreenState extends State<RemindersScreen> {
                 subtitle: time,
                 time: '',
                 iconColor: color,
-                onSpeak: () => _speakReminder('$malayalamLabel $time.'),
               ),
             ),
           )
           .toList(),
     );
-  }
-
-  Future<void> _speakReminder(String text) async {
-    try {
-      await _speechOutput.speak(text);
-    } catch (error) {
-      debugPrint('Could not speak care reminder: $error');
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(error.toString())));
-      }
-    }
   }
 
   Widget _sectionTitle(String title) => Padding(
@@ -384,7 +412,6 @@ class _RemindersScreenState extends State<RemindersScreen> {
     required String subtitle,
     required String time,
     required Color iconColor,
-    VoidCallback? onSpeak,
     bool taken = false,
     VoidCallback? onToggleTaken,
   }) {
@@ -467,15 +494,6 @@ class _RemindersScreenState extends State<RemindersScreen> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (onSpeak != null)
-                    IconButton(
-                      tooltip: 'Hear reminder',
-                      visualDensity: VisualDensity.compact,
-                      onPressed: onSpeak,
-                      icon: const Icon(Icons.volume_up_rounded),
-                      color: iconColor,
-                    ),
-
                   if (onToggleTaken != null) ...[
                     const SizedBox(width: 4),
                     if (taken)

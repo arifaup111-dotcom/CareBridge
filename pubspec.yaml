@@ -34,25 +34,22 @@ dependencies:
   firebase_core: ^4.14.0
   firebase_auth: ^6.6.0
   cupertino_icons: ^1.0.8
-  speech_to_text: ^7.4.0
-  flutter_tts: ^4.2.5
-  sherpa_onnx: ^1.13.8
-  record: ^7.1.2
-  path_provider: ^2.1.5
 
-  firebase_ai: ^3.15.0
   firebase_app_check: ^0.4.6
   cloud_firestore: ^6.9.0
   image_picker: ^1.2.3
 
   # ---- Step 1: elder dashboard foundation ----
-  permission_handler: ^12.0.1      # runtime mic / location / notification prompts
+  permission_handler: ^12.0.1      # runtime location / notification prompts
   geolocator: ^14.0.2              # emergency location sharing
   url_launcher: ^6.3.2             # calling the emergency contact
   flutter_local_notifications: ^19.4.2  # medicine & appointment reminders
   timezone: ^0.10.1
   intl: ^0.20.2                    # date / time formatting
   shared_preferences: ^2.5.3       # small local settings cache
+  speech_to_text: ^7.5.0
+  flutter_tts: ^4.2.5
+  cloud_functions: ^6.5.0
 
 dev_dependencies:
   flutter_test:
@@ -69,9 +66,6 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
-
-  assets:
-    - assets/sherpa_kws/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

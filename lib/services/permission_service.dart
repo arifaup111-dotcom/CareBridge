@@ -11,7 +11,7 @@ class PermissionService {
   // SINGLE PERMISSIONS
   // ================================================================
 
-  /// Microphone — required for speech-to-text.
+  /// Microphone — required for foreground voice interaction.
   static Future<bool> requestMicrophone() async {
     final status = await Permission.microphone.request();
     return status.isGranted;
@@ -45,20 +45,14 @@ class PermissionService {
   // COMBINED REQUEST
   // ================================================================
 
-  /// Asks for everything the elder dashboard needs, in one pass.
-  ///
-  /// Returns a map rather than a single bool so the dashboard can
-  /// degrade gracefully — for example still allowing voice input when
-  /// only the location permission was refused.
+  /// Asks for location and notification permissions in one pass.
   static Future<Map<String, bool>> requestElderDashboardPermissions() async {
     final statuses = await [
-      Permission.microphone,
       Permission.location,
       Permission.notification,
     ].request();
 
     return {
-      'microphone': statuses[Permission.microphone]?.isGranted ?? false,
       'location': statuses[Permission.location]?.isGranted ?? false,
       'notification': statuses[Permission.notification]?.isGranted ?? false,
     };
@@ -67,8 +61,6 @@ class PermissionService {
   // ================================================================
   // STATUS CHECKS (no prompt)
   // ================================================================
-
-  static Future<bool> hasMicrophone() => Permission.microphone.isGranted;
 
   static Future<bool> hasLocation() => Permission.location.isGranted;
 

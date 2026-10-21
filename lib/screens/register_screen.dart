@@ -23,7 +23,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController nameController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController phoneController = TextEditingController();
-  final TextEditingController assistantNameController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController confirmPasswordController =
       TextEditingController();
@@ -37,7 +36,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     nameController.dispose();
     emailController.dispose();
     phoneController.dispose();
-    assistantNameController.dispose();
     passwordController.dispose();
     confirmPasswordController.dispose();
     super.dispose();
@@ -156,28 +154,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   const SizedBox(height: 18),
                 ],
 
-                if (_selectedRole == 'elder') ...[
-                  TextFormField(
-                    controller: assistantNameController,
-                    textCapitalization: TextCapitalization.words,
-                    maxLength: 30,
-                    decoration: inputDecoration(
-                      label: "What would you like to call your assistant?",
-                      icon: Icons.record_voice_over_outlined,
-                    ),
-                    validator: (value) {
-                      if (_selectedRole != 'elder') return null;
-                      if (value == null || value.trim().isEmpty) {
-                        return "Choose a name to call your assistant";
-                      }
-                      return value.trim().length > 30
-                          ? "Use 30 characters or fewer"
-                          : null;
-                    },
-                  ),
-                  const SizedBox(height: 18),
-                ],
-
                 TextFormField(
                   controller: phoneController,
                   keyboardType: TextInputType.phone,
@@ -288,9 +264,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             role: role,
                             phone: phoneController.text.trim(),
                             elderId: publicElderId,
-                            assistantName: isElder
-                                ? assistantNameController.text.trim()
-                                : null,
                           );
 
                           if (!mounted) return;

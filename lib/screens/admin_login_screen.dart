@@ -1,10 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/auth_service.dart';
 import 'admin_dashboard.dart';
+import 'login_screen.dart';
 
 class AdminLoginScreen extends StatefulWidget {
   const AdminLoginScreen({super.key});
@@ -21,10 +21,21 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   bool _rememberLogin = true;
 
   @override
+  void initState() {
+    super.initState();
+    _loadRememberLogin();
+  }
+
+  @override
   void dispose() {
     _email.dispose();
     _password.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadRememberLogin() async {
+    final rememberLogin = await AuthService().shouldRememberLogin();
+    if (mounted) setState(() => _rememberLogin = rememberLogin);
   }
 
   Future<void> _login() async {
@@ -54,8 +65,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
         return;
       }
 
-      final preferences = await SharedPreferences.getInstance();
-      await preferences.setBool(AuthService.rememberLoginKey, _rememberLogin);
+      await AuthService().setRememberLogin(_rememberLogin);
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
@@ -208,6 +218,23 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                     onPressed: _sendReset,
                     icon: const Icon(Icons.lock_reset_rounded),
                     label: const Text('Send password reset link'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _loading
+                        ? null
+                        : () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const LoginScreen(
+                                  selectedRole: 'Admin',
+                                  initialUsePhoneOtp: true,
+                                ),
+                              ),
+                            );
+                          },
+                    icon: const Icon(Icons.sms_outlined),
+                    label: const Text('Sign in with phone OTP'),
                   ),
                 ],
               ),

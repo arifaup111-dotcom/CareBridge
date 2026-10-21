@@ -4,10 +4,10 @@
          CareBridge permissions
          ============================================================ -->
 
-    <!-- Firebase Auth, Firestore and the Gemini API all need network. -->
+    <!-- Firebase Auth and Firestore need network. -->
     <uses-permission android:name="android.permission.INTERNET"/>
 
-    <!-- Speech-to-text (Malayalam voice input). -->
+    <!-- Foreground-service English voice interaction. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
 
     <!-- Emergency location sharing. -->
@@ -22,14 +22,14 @@
     <!-- Medicine and appointment reminders. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
 
-    <!-- Supported background voice operation. -->
+    <!-- Background location sharing and scheduled reminders. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
 
     <application
@@ -42,8 +42,6 @@
             android:launchMode="singleTop"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
-            android:showWhenLocked="true"
-            android:turnScreenOn="true"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
@@ -60,14 +58,33 @@
         </activity>
 
         <service
+            android:name=".EmergencyLocationService"
+            android:foregroundServiceType="location"
+            android:exported="false" />
+        <service
             android:name=".CareVoiceService"
             android:foregroundServiceType="microphone"
             android:stopWithTask="false"
             android:exported="false" />
         <service
-            android:name=".EmergencyLocationService"
-            android:foregroundServiceType="location"
+            android:name=".ReminderAnnouncementService"
+            android:foregroundServiceType="mediaPlayback"
+            android:stopWithTask="false"
             android:exported="false" />
+
+        <receiver android:name=".ReminderAlarmReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.carebridge.CARE_REMINDER"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.TIME_SET"/>
+                <action android:name="android.intent.action.TIMEZONE_CHANGED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+        </receiver>
 
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
@@ -84,20 +101,9 @@
             android:value="2" />
     </application>
 
-    <!-- ============================================================
-         Android 11+ package visibility.
-
-         Without the RecognitionService entry below, speech_to_text
-         cannot see the system speech engine and initialize() returns
-         false with no error. This is the usual reason Malayalam STT
-         appears to do nothing on a real device.
-         ============================================================ -->
     <queries>
         <intent>
             <action android:name="android.speech.RecognitionService"/>
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.TTS_SERVICE"/>
         </intent>
         <intent>
             <action android:name="android.intent.action.DIAL"/>
